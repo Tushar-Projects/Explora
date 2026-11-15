@@ -1,0 +1,3359 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Explora — Audio-Tactile Cave Exploration Game</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js r128 CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Google Fonts: Inter & Space Grotesk & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cavern: {
+              950: '#070a10',
+              900: '#0b0f17',
+              800: '#131b2e',
+              700: '#1e2942',
+              600: '#2d3d5e',
+            },
+            gold: {
+              400: '#f7c95c',
+              500: '#f4b942',
+              600: '#d99b26',
+            },
+            sonar: {
+              400: '#38bdf8',
+              500: '#0ea5e9',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            display: ['Space Grotesk', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Custom High-Contrast & Accessibility-Focused Styles */
+    :root {
+      --focus-ring: #f4b942;
+      --sonar-cyan: #38bdf8;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body {
+      background-color: #070a10;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.07) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(244, 185, 66, 0.06) 0%, transparent 40%);
+      color: #f8fafc;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+
+    /* Ultra-clear keyboard focus rings for low-vision accessibility */
+    *:focus-visible {
+      outline: 3px solid var(--focus-ring) !important;
+      outline-offset: 3px !important;
+      box-shadow: 0 0 0 6px rgba(244, 185, 66, 0.25) !important;
+    }
+
+    /* Tactile button feel */
+    .btn-tactile {
+      transition: transform 0.1s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+      box-shadow: 0 4px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    .btn-tactile:active:not(:disabled) {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    .btn-tactile:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Hardware Casing Bevel */
+    .tactile-casing {
+      background: linear-gradient(145deg, #162038 0%, #0d1322 100%);
+      box-shadow: 
+        inset 0 2px 4px rgba(255,255,255,0.08),
+        inset 0 -4px 8px rgba(0,0,0,0.7),
+        0 12px 32px -8px rgba(0, 0, 0, 0.75);
+      border: 2px solid #283655;
+    }
+
+    /* Pulse animations for sonar and refresh badge */
+    @keyframes sonarRipple {
+      0% { transform: scale(0.95); opacity: 0.9; }
+      70% { transform: scale(1.08); opacity: 0.3; }
+      100% { transform: scale(1.12); opacity: 0; }
+    }
+    .animate-sonar {
+      animation: sonarRipple 1.4s infinite ease-out;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f17;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2d3d5e;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #38bdf8;
+    }
+
+    #tactile-canvas-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      border-radius: 0.75rem;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-gold-500 selection:text-cavern-950">
+
+  <!-- Screen Reader Live Regions -->
+  <div id="sr-live-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <div id="sr-live-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- TOP NAVIGATION / HEADER BAR -->
+  <header class="w-full bg-cavern-900/90 border-b border-cavern-700/80 backdrop-blur-md sticky top-0 z-30 px-4 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <!-- Brand Title -->
+      <div class="flex items-center gap-3">
+        <button id="btn-header-logo" class="flex items-center gap-2.5 text-left group rounded-xl p-1" aria-label="Explora Home Menu">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-400 to-gold-600 flex items-center justify-center shadow-md shadow-gold-500/20 border border-gold-400/40">
+            <!-- Tactile Pin Matrix SVG Icon -->
+            <svg class="w-6 h-6 text-cavern-950" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="6" cy="6" r="2.2"/>
+              <circle cx="12" cy="6" r="2.2"/>
+              <circle cx="18" cy="6" r="2.2"/>
+              <circle cx="6" cy="12" r="2.2"/>
+              <circle cx="12" cy="12" r="3.2"/>
+              <circle cx="18" cy="12" r="2.2"/>
+              <circle cx="6" cy="18" r="2.2"/>
+              <circle cx="12" cy="18" r="2.2"/>
+              <circle cx="18" cy="18" r="2.2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="font-display font-bold text-xl tracking-tight text-white group-hover:text-gold-400 transition-colors">EXPLORA</h1>
+              <span class="text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-sonar-500/20 text-sonar-400 border border-sonar-400/30">Tactile Matrix Sim</span>
+            </div>
+            <p class="text-xs text-slate-400 hidden sm:block">Audio-Tactile Cave Exploration Prototype</p>
+          </div>
+        </button>
+      </div>
+
+      <!-- Quick Accessibility & Audio Status Controls -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Quick Audio Mute/Unmute -->
+        <button id="btn-quick-mute" class="btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium flex items-center gap-2 text-slate-200" aria-label="Toggle Master Audio">
+          <span id="icon-quick-mute" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+          <span id="label-quick-mute">Audio: ON</span>
+        </button>
+
+        <!-- Repeat Last Prompt (R) -->
+        <button id="btn-header-repeat" class="btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium flex items-center gap-1.5 text-gold-400" aria-label="Repeat Last Spoken Cue (Shortcut R)" title="Shortcut: R">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span>Repeat <kbd class="hidden sm:inline font-mono text-[10px] bg-cavern-950 px-1.5 py-0.5 rounded border border-cavern-600">R</kbd></span>
+        </button>
+
+        <!-- Settings Modal Trigger -->
+        <button id="btn-open-settings" class="btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium flex items-center gap-1.5 text-slate-200" aria-label="Open Audio and Tactile Settings">
+          <svg class="w-4 h-4 text-sonar-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN APPLICATION CONTAINER -->
+  <main class="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 flex flex-col justify-center">
+
+    <!-- ==========================================
+         SCREEN 1: MAIN MENU
+         ========================================== -->
+    <section id="screen-menu" class="w-full max-w-4xl mx-auto my-auto py-4" aria-labelledby="menu-heading">
+      <div class="tactile-casing rounded-3xl p-6 sm:p-10 relative overflow-hidden">
+        <!-- Decorative Ambient Sonar Rings -->
+        <div class="pointer-events-none absolute -right-20 -top-20 w-72 h-72 rounded-full border border-sonar-400/10"></div>
+        <div class="pointer-events-none absolute -right-10 -top-10 w-52 h-52 rounded-full border border-gold-400/10"></div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <!-- Left Column: Intro & Primary Actions -->
+          <div class="lg:col-span-7 space-y-6">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-500/15 border border-gold-400/30 text-gold-400 text-xs font-semibold tracking-wide">
+              <span>ACCESSIBILITY-FIRST AUDIO &amp; TACTILE PROTOTYPE</span>
+            </div>
+
+            <div class="space-y-2">
+              <h2 id="menu-heading" class="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white">
+                Explore the Unseen Caverns
+              </h2>
+              <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
+                Navigate mysterious underground caves using a simulated <strong>refreshable tactile pin matrix</strong>, spatial <strong>sonar echo pulses</strong>, and procedural 3D sound. Designed to be played completely with your eyes closed—or observed in 3D relief.
+              </p>
+            </div>
+
+            <!-- Primary Navigation Buttons -->
+            <nav class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2" aria-label="Main Menu">
+              <button id="btn-menu-tutorial" class="btn-tactile sm:col-span-2 py-4 px-6 rounded-2xl bg-gradient-to-r from-gold-500 to-gold-600 hover:from-gold-400 hover:to-gold-500 text-cavern-950 font-display font-bold text-lg flex items-center justify-between group">
+                <span class="flex items-center gap-3">
+                  <span class="w-9 h-9 rounded-xl bg-cavern-950/15 flex items-center justify-center font-mono text-base">1</span>
+                  <span>Interactive Audio Tutorial (Recommended First)</span>
+                </span>
+                <span class="text-xs font-mono uppercase px-2.5 py-1 rounded-lg bg-cavern-950/20">Self-Voiced</span>
+              </button>
+
+              <button id="btn-menu-start" class="btn-tactile py-3.5 px-5 rounded-2xl bg-sonar-500 hover:bg-sonar-400 text-cavern-950 font-display font-bold text-base flex items-center gap-3">
+                <span class="w-8 h-8 rounded-lg bg-cavern-950/15 flex items-center justify-center font-mono text-sm">2</span>
+                <span id="label-start-continue">Start Adventure (Level 1)</span>
+              </button>
+
+              <button id="btn-menu-levels" class="btn-tactile py-3.5 px-5 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-white font-display font-semibold text-base flex items-center gap-3">
+                <span class="w-8 h-8 rounded-lg bg-cavern-950 flex items-center justify-center font-mono text-sm text-sonar-400">3</span>
+                <span>Select Cavern / Endless</span>
+              </button>
+
+              <button id="btn-menu-achievements" class="btn-tactile py-3.5 px-5 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-white font-display font-semibold text-base flex items-center gap-3">
+                <span class="w-8 h-8 rounded-lg bg-cavern-950 flex items-center justify-center font-mono text-sm text-gold-400">4</span>
+                <span>Badges &amp; Progress</span>
+              </button>
+
+              <button id="btn-menu-howto" class="btn-tactile py-3.5 px-5 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-white font-display font-semibold text-base flex items-center gap-3">
+                <span class="w-8 h-8 rounded-lg bg-cavern-950 flex items-center justify-center font-mono text-sm text-emerald-400">5</span>
+                <span>How to Play &amp; Controls</span>
+              </button>
+            </nav>
+          </div>
+
+          <!-- Right Column: Tactile Legend & Quick Sound Preview -->
+          <div class="lg:col-span-5 bg-cavern-950/80 border border-cavern-700 rounded-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-cavern-800 pb-3">
+              <h3 class="font-display font-bold text-sm uppercase tracking-wider text-sonar-400">Tactile Pin Matrix Legend</h3>
+              <span class="text-xs font-mono text-slate-400">6×6 to 8×8 Cells</span>
+            </div>
+
+            <ul class="space-y-2.5 text-xs sm:text-sm" aria-label="Tactile Cell Representations">
+              <li class="flex items-center justify-between p-2 rounded-xl bg-cavern-900/90 border border-cavern-800">
+                <span class="flex items-center gap-2.5">
+                  <span class="w-4 h-4 rounded-full bg-sonar-400 ring-4 ring-sonar-400/20 inline-block"></span>
+                  <strong class="text-white">Explorer (You)</strong>
+                </span>
+                <span class="text-slate-400 font-mono text-xs">Raised Central Beacon</span>
+              </li>
+              <li class="flex items-center justify-between p-2 rounded-xl bg-cavern-900/90 border border-cavern-800">
+                <span class="flex items-center gap-2.5">
+                  <span class="w-4 h-4 rotate-45 bg-gold-400 ring-4 ring-gold-400/20 inline-block"></span>
+                  <strong class="text-gold-400">Hidden Treasure</strong>
+                </span>
+                <span class="text-slate-400 font-mono text-xs">Diamond Gem + Chime</span>
+              </li>
+              <li class="flex items-center justify-between p-2 rounded-xl bg-cavern-900/90 border border-cavern-800">
+                <span class="flex items-center gap-2.5">
+                  <span class="w-4 h-4 rounded bg-slate-400 inline-block"></span>
+                  <strong class="text-slate-200">Cavern Wall</strong>
+                </span>
+                <span class="text-slate-400 font-mono text-xs">3×3 Raised Ridge + Thud</span>
+              </li>
+              <li class="flex items-center justify-between p-2 rounded-xl bg-cavern-900/90 border border-cavern-800">
+                <span class="flex items-center gap-2.5">
+                  <span class="w-4 h-4 rounded-full bg-rose-500 ring-4 ring-rose-500/20 inline-block"></span>
+                  <strong class="text-rose-400">Cave Beetle</strong>
+                </span>
+                <span class="text-slate-400 font-mono text-xs">Spiky Cluster + Heartbeat</span>
+              </li>
+              <li class="flex items-center justify-between p-2 rounded-xl bg-cavern-900/90 border border-cavern-800">
+                <span class="flex items-center gap-2.5">
+                  <span class="w-4 h-4 rounded border-2 border-emerald-400 bg-emerald-500/20 inline-block"></span>
+                  <strong class="text-emerald-400">Cavern Exit</strong>
+                </span>
+                <span class="text-slate-400 font-mono text-xs">Archway Frame + Chord</span>
+              </li>
+            </ul>
+
+            <div class="pt-2 border-t border-cavern-800 flex items-center justify-between text-xs text-slate-400">
+              <span>Keyboard Ready: Arrows / WASD / Space</span>
+              <button id="btn-menu-test-audio" class="text-gold-400 hover:underline font-medium">Test Audio Synth →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SCREEN 2: GAMEPLAY & TACTILE WORKBENCH
+         ========================================== -->
+    <section id="screen-game" class="hidden w-full" aria-label="Explora Active Gameplay Screen">
+      
+      <!-- Top Tutorial / Mission Banner (Visible during Tutorial or Active Level) -->
+      <div id="banner-mission" class="mb-4 rounded-2xl bg-cavern-900 border-2 border-gold-500/50 p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+        <div class="flex items-start sm:items-center gap-3">
+          <div id="badge-mode-label" class="px-3 py-1 rounded-lg bg-gold-500 text-cavern-950 font-mono font-bold text-xs uppercase shrink-0">
+            LEVEL 1
+          </div>
+          <div>
+            <h2 id="text-mission-title" class="font-display font-bold text-base sm:text-lg text-white">
+              Whispering Grotto
+            </h2>
+            <p id="text-mission-instruction" class="text-xs sm:text-sm text-slate-200">
+              Use Arrow keys or WASD to move one cell at a time. Press Space or E to emit an Echo Pulse.
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btn-skip-tutorial" class="hidden btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-slate-300">
+            Skip Tutorial
+          </button>
+          <button id="btn-game-menu" class="btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-slate-200">
+            Main Menu <kbd class="font-mono text-[10px] ml-1 opacity-75">Esc</kbd>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main 12-Column Workbench Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+
+        <!-- LEFT / CENTER: 3D Simulated Refreshable Tactile Display (7 cols on desktop) -->
+        <div class="lg:col-span-7 flex flex-col">
+          <div class="tactile-casing rounded-3xl p-4 sm:p-5 flex-1 flex flex-col justify-between relative">
+            
+            <!-- Hardware Top Bar: Display Info & Refresh Delay Status -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-cavern-700">
+              <div class="flex items-center gap-2.5">
+                <span class="w-3 h-3 rounded-full bg-sonar-400 shadow-sm shadow-sonar-400"></span>
+                <span class="font-mono text-xs sm:text-sm font-bold tracking-wide text-slate-200">
+                  TACTILE PIN MATRIX (<span id="label-grid-dimensions">6×6</span>)
+                </span>
+              </div>
+
+              <!-- Hardware Refresh Status Indicator -->
+              <div id="badge-tactile-refresh" class="flex items-center gap-2 px-3 py-1 rounded-full bg-cavern-950 border border-cavern-700 text-xs font-mono">
+                <span id="dot-refresh-state" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span id="text-refresh-state" class="text-slate-300">PINS READY (200ms Delay)</span>
+              </div>
+            </div>
+
+            <!-- 3D Three.js Canvas Viewport -->
+            <div class="relative w-full h-[320px] sm:h-[410px] rounded-2xl bg-cavern-950 border border-cavern-800 overflow-hidden shadow-inner" id="tactile-canvas-container" role="region" aria-label="Simulated 3D Refreshable Tactile Pin Display">
+              <!-- Coordinate Axis Overlay Hints -->
+              <div class="pointer-events-none absolute top-2.5 left-3 z-10 flex items-center gap-2 bg-cavern-900/85 backdrop-blur px-2.5 py-1 rounded-lg border border-cavern-700 text-[11px] font-mono text-slate-300">
+                <span>N ↑</span>
+                <span>S ↓</span>
+                <span>W ←</span>
+                <span>E →</span>
+              </div>
+
+              <!-- Active Refresh Overlay Pill -->
+              <div id="overlay-refreshing-pill" class="hidden pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 mx-auto w-max z-20 px-4 py-2 rounded-full bg-cavern-950/90 border border-gold-400/60 text-gold-400 font-mono text-xs font-bold shadow-lg flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-gold-400 animate-ping"></span>
+                <span>Tactile Pins Actuating...</span>
+              </div>
+            </div>
+
+            <!-- Hardware Bottom Toolbar: Tactile Memory Mode vs Sighted Debug & Camera Angle -->
+            <div class="pt-3 mt-3 border-t border-cavern-700 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex flex-wrap items-center gap-2">
+                <button id="btn-toggle-display-mode" class="btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-sonar-400/40 text-sonar-400 font-medium flex items-center gap-1.5" aria-label="Toggle between Tactile Memory Mode and Observer Full Map Mode (Shortcut M)">
+                  <span>Mode: <strong id="label-display-mode">Tactile Memory (Realistic)</strong></span>
+                  <kbd class="font-mono text-[10px] bg-cavern-950 px-1.5 py-0.5 rounded">M</kbd>
+                </button>
+
+                <button id="btn-toggle-camera" class="btn-tactile px-3 py-1.5 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-slate-200 font-medium flex items-center gap-1.5" aria-label="Toggle 3D Camera Angle (Shortcut C)">
+                  <span>Camera: <strong id="label-camera-view">Angled 3D Relief</strong></span>
+                  <kbd class="font-mono text-[10px] bg-cavern-950 px-1.5 py-0.5 rounded">C</kbd>
+                </button>
+              </div>
+
+              <span class="text-slate-400 font-mono text-[11px] hidden sm:inline">Drag canvas to rotate • Scroll to zoom</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Accessible HUD, Tactile Controls & Live Audio Transcript (5 cols on desktop) -->
+        <div class="lg:col-span-5 flex flex-col gap-4 justify-between">
+
+          <!-- 1. Telemetry & Status Cards -->
+          <div class="tactile-casing rounded-3xl p-4 sm:p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-cavern-700 pb-2.5">
+              <h3 class="font-display font-bold text-sm uppercase tracking-wider text-slate-300">Explorer Telemetry</h3>
+              <button id="btn-read-status" class="btn-tactile px-2.5 py-1 rounded-lg bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-mono text-sonar-400" aria-label="Speak Current Coordinates and Status (Shortcut I or L)">
+                Speak Status <kbd class="bg-cavern-950 px-1 rounded">I / L</kbd>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5 text-center">
+              <!-- Player Position -->
+              <div class="bg-cavern-950/90 border border-cavern-800 rounded-2xl p-3">
+                <div class="text-[11px] font-mono uppercase text-slate-400">Coordinates</div>
+                <div id="hud-coordinates" class="font-mono font-bold text-lg sm:text-xl text-sonar-400 mt-0.5">Col B, Row 2</div>
+              </div>
+
+              <!-- Treasures Found -->
+              <div class="bg-cavern-950/90 border border-cavern-800 rounded-2xl p-3">
+                <div class="text-[11px] font-mono uppercase text-slate-400">Treasures</div>
+                <div id="hud-treasures" class="font-mono font-bold text-lg sm:text-xl text-gold-400 mt-0.5">0 / 1</div>
+              </div>
+
+              <!-- Echo Pulse Status -->
+              <div class="bg-cavern-950/90 border border-cavern-800 rounded-2xl p-3">
+                <div class="text-[11px] font-mono uppercase text-slate-400">Echo Sonar</div>
+                <div id="hud-echo-status" class="font-mono font-bold text-sm sm:text-base text-emerald-400 mt-1">READY</div>
+              </div>
+            </div>
+
+            <!-- Echo Cooldown Progress Bar -->
+            <div class="space-y-1">
+              <div class="flex justify-between text-[11px] font-mono text-slate-400">
+                <span>Echo Pulse Cooldown (<span id="label-echo-radius">Radius: 3 cells</span>)</span>
+                <span id="hud-steps-counter">Steps: 0 | Bumps: 0</span>
+              </div>
+              <div class="w-full h-2 rounded-full bg-cavern-950 overflow-hidden border border-cavern-800">
+                <div id="bar-echo-cooldown" class="h-full bg-gradient-to-r from-sonar-500 to-emerald-400 transition-all duration-150" style="width: 100%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Tactile Control Deck (D-Pad + Sonar Echo Button) -->
+          <div class="tactile-casing rounded-3xl p-4 sm:p-5">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+              
+              <!-- Directional Pad (7 cols) -->
+              <div class="sm:col-span-7 flex flex-col items-center">
+                <div class="text-[11px] font-mono uppercase text-slate-400 mb-2">Step Navigation (Arrows / WASD)</div>
+                <div class="grid grid-cols-3 gap-2 w-full max-w-[210px]" role="group" aria-label="Directional Movement Controls">
+                  <div></div>
+                  <button id="btn-move-north" class="btn-tactile h-12 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 flex flex-col items-center justify-center text-white font-bold" aria-label="Move North (Up Arrow or W)">
+                    <span class="text-sm leading-none">▲</span>
+                    <span class="text-[10px] font-mono text-slate-300 mt-0.5">NORTH</span>
+                  </button>
+                  <div></div>
+
+                  <button id="btn-move-west" class="btn-tactile h-12 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 flex flex-col items-center justify-center text-white font-bold" aria-label="Move West (Left Arrow or A)">
+                    <span class="text-sm leading-none">◀</span>
+                    <span class="text-[10px] font-mono text-slate-300 mt-0.5">WEST</span>
+                  </button>
+
+                  <button id="btn-feel-tile" class="btn-tactile h-12 rounded-2xl bg-cavern-950 hover:bg-cavern-900 border border-sonar-400/40 flex flex-col items-center justify-center text-sonar-400 font-bold" aria-label="Feel Current Tile and Check Adjacent Hints (Shortcut F)">
+                    <span class="text-xs font-mono">FEEL</span>
+                    <span class="text-[9px] font-mono text-slate-400">TILE</span>
+                  </button>
+
+                  <button id="btn-move-east" class="btn-tactile h-12 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 flex flex-col items-center justify-center text-white font-bold" aria-label="Move East (Right Arrow or D)">
+                    <span class="text-sm leading-none">▶</span>
+                    <span class="text-[10px] font-mono text-slate-300 mt-0.5">EAST</span>
+                  </button>
+
+                  <div></div>
+                  <button id="btn-move-south" class="btn-tactile h-12 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 flex flex-col items-center justify-center text-white font-bold" aria-label="Move South (Down Arrow or S)">
+                    <span class="text-sm leading-none">▼</span>
+                    <span class="text-[10px] font-mono text-slate-300 mt-0.5">SOUTH</span>
+                  </button>
+                  <div></div>
+                </div>
+              </div>
+
+              <!-- Echo Pulse Actuator Button (5 cols) -->
+              <div class="sm:col-span-5 flex flex-col items-center justify-center">
+                <button id="btn-emit-echo" class="btn-tactile w-full py-5 px-4 rounded-2xl bg-gradient-to-b from-sonar-400 to-sonar-500 hover:from-sonar-400 hover:to-sonar-400 text-cavern-950 font-display font-bold flex flex-col items-center justify-center gap-1.5 shadow-lg shadow-sonar-500/20" aria-label="Emit Echo Sonar Pulse (Spacebar or E)">
+                  <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                  </svg>
+                  <span class="text-base tracking-tight">EMIT ECHO</span>
+                  <span class="text-[11px] font-mono bg-cavern-950/20 px-2 py-0.5 rounded">Space / E</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 3. Accessible Live Audio & Speech Transcript Feed -->
+          <div class="tactile-casing rounded-3xl p-4 flex-1 flex flex-col justify-between min-h-[145px]">
+            <div class="flex items-center justify-between border-b border-cavern-700 pb-2 mb-2">
+              <span class="font-display font-bold text-xs uppercase tracking-wider text-gold-400 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-gold-400"></span>
+                <span>Live Audio &amp; Speech Log</span>
+              </span>
+              <span class="text-[11px] font-mono text-slate-400">Screen-Reader Synced</span>
+            </div>
+            <div id="log-audio-transcript" class="space-y-1.5 overflow-y-auto max-h-[115px] pr-1 text-xs sm:text-sm font-sans" aria-live="off">
+              <div class="text-slate-300">Welcome to Explora. Ready to begin cave exploration.</div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==========================================
+       MODAL 1: LEVEL SELECTION & CUSTOM CAVE
+       ========================================== -->
+  <div id="modal-levels" class="hidden fixed inset-0 z-50 bg-cavern-950/85 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-levels-title">
+    <div class="tactile-casing rounded-3xl max-w-3xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto space-y-6">
+      <div class="flex items-center justify-between border-b border-cavern-700 pb-4">
+        <div>
+          <h2 id="modal-levels-title" class="font-display font-bold text-2xl text-white">Select Underground Cavern</h2>
+          <p class="text-xs sm:text-sm text-slate-400">Complete caverns to unlock deeper, larger tactile grids and patrolling Cave Beetles.</p>
+        </div>
+        <button id="btn-close-levels" class="btn-tactile px-3.5 py-2 rounded-xl bg-cavern-800 hover:bg-cavern-700 text-slate-200 text-xs font-mono">Close (Esc)</button>
+      </div>
+
+      <!-- Campaign Levels List -->
+      <div id="container-level-cards" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <!-- Populated dynamically by Game UI -->
+      </div>
+
+      <!-- Custom / Endless Procedural Cave Generator Box -->
+      <div class="rounded-2xl bg-cavern-950/90 border border-sonar-400/40 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <span class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-sonar-500/20 text-sonar-400">Infinite Replayability</span>
+          <h3 class="font-display font-bold text-lg text-white mt-1">Endless Procedural Cavern</h3>
+          <p class="text-xs text-slate-300">Generate a brand-new solvable 7×7 cavern with 2 treasures and 1 patrolling Cave Beetle.</p>
+        </div>
+        <button id="btn-start-endless" class="btn-tactile shrink-0 px-5 py-3 rounded-xl bg-sonar-500 hover:bg-sonar-400 text-cavern-950 font-display font-bold text-sm">
+          Launch Endless Cave
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL 2: LEVEL COMPLETION CELEBRATION
+       ========================================== -->
+  <div id="modal-level-complete" class="hidden fixed inset-0 z-50 bg-cavern-950/85 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-complete-title">
+    <div class="tactile-casing rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-6 text-center">
+      <div class="w-16 h-16 rounded-2xl bg-gold-500/20 border-2 border-gold-400 text-gold-400 mx-auto flex items-center justify-center">
+        <svg class="w-9 h-9" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.788l1.599.799L9 4.323V3a1 1 0 011-1z" clip-rule="evenodd"/>
+        </svg>
+      </div>
+
+      <div class="space-y-1">
+        <span class="text-xs font-mono uppercase tracking-widest text-gold-400">Cavern Conquered!</span>
+        <h2 id="modal-complete-title" class="font-display font-bold text-3xl text-white">Level Complete</h2>
+        <p id="modal-complete-subtitle" class="text-sm text-slate-300">You navigated the darkness and escaped with all treasures!</p>
+      </div>
+
+      <!-- Exploration Stats Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+        <div class="bg-cavern-950 p-3 rounded-2xl border border-cavern-800">
+          <div class="text-[11px] font-mono text-slate-400">Treasures</div>
+          <div id="stat-complete-treasures" class="font-mono font-bold text-lg text-gold-400">2 / 2</div>
+        </div>
+        <div class="bg-cavern-950 p-3 rounded-2xl border border-cavern-800">
+          <div class="text-[11px] font-mono text-slate-400">Steps Taken</div>
+          <div id="stat-complete-steps" class="font-mono font-bold text-lg text-white">18</div>
+        </div>
+        <div class="bg-cavern-950 p-3 rounded-2xl border border-cavern-800">
+          <div class="text-[11px] font-mono text-slate-400">Echo Pulses</div>
+          <div id="stat-complete-echoes" class="font-mono font-bold text-lg text-sonar-400">4</div>
+        </div>
+        <div class="bg-cavern-950 p-3 rounded-2xl border border-cavern-800">
+          <div class="text-[11px] font-mono text-slate-400">Time</div>
+          <div id="stat-complete-time" class="font-mono font-bold text-lg text-emerald-400">0:42</div>
+        </div>
+      </div>
+
+      <!-- Newly Unlocked Badges Box -->
+      <div id="box-unlocked-badges" class="hidden bg-gold-500/10 border border-gold-400/40 rounded-2xl p-3.5 text-left">
+        <div class="text-xs font-mono uppercase text-gold-400 font-bold mb-1">New Achievement Unlocked!</div>
+        <div id="list-unlocked-badges" class="text-sm text-white font-medium"></div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 pt-2">
+        <button id="btn-complete-next" class="btn-tactile flex-1 py-3.5 px-6 rounded-2xl bg-gold-500 hover:bg-gold-400 text-cavern-950 font-display font-bold text-base">
+          Continue to Next Cavern →
+        </button>
+        <button id="btn-complete-replay" class="btn-tactile py-3.5 px-5 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-white font-display font-semibold text-sm">
+          Replay Level
+        </button>
+        <button id="btn-complete-menu" class="btn-tactile py-3.5 px-5 rounded-2xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-slate-300 font-display font-semibold text-sm">
+          Menu
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL 3: SETTINGS & INTERACTIVE SOUND TEST BENCH
+       ========================================== -->
+  <div id="modal-settings" class="hidden fixed inset-0 z-50 bg-cavern-950/85 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-settings-title">
+    <div class="tactile-casing rounded-3xl max-w-2xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto space-y-6">
+      <div class="flex items-center justify-between border-b border-cavern-700 pb-4">
+        <div>
+          <h2 id="modal-settings-title" class="font-display font-bold text-2xl text-white">Audio &amp; Tactile Hardware Settings</h2>
+          <p class="text-xs sm:text-sm text-slate-400">Customize volumes, speech feedback, simulated refreshable tactile display latency, and test spatial sounds.</p>
+        </div>
+        <button id="btn-close-settings" class="btn-tactile px-3.5 py-2 rounded-xl bg-cavern-800 hover:bg-cavern-700 text-slate-200 text-xs font-mono">Close (Esc)</button>
+      </div>
+
+      <!-- Volume & Speech Controls -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="bg-cavern-950/80 p-4 rounded-2xl border border-cavern-800 space-y-2">
+          <div class="flex justify-between text-xs font-medium">
+            <label for="input-master-vol" class="text-white">Master Volume</label>
+            <span id="val-master-vol" class="font-mono text-gold-400">85%</span>
+          </div>
+          <input id="input-master-vol" type="range" min="0" max="100" value="85" class="w-full accent-gold-500 cursor-pointer" />
+        </div>
+
+        <div class="bg-cavern-950/80 p-4 rounded-2xl border border-cavern-800 space-y-2">
+          <div class="flex justify-between text-xs font-medium">
+            <label for="input-sfx-vol" class="text-white">Sound Effects Volume</label>
+            <span id="val-sfx-vol" class="font-mono text-sonar-400">90%</span>
+          </div>
+          <input id="input-sfx-vol" type="range" min="0" max="100" value="90" class="w-full accent-sonar-400 cursor-pointer" />
+        </div>
+
+        <div class="bg-cavern-950/80 p-4 rounded-2xl border border-cavern-800 space-y-2">
+          <div class="flex justify-between text-xs font-medium">
+            <label for="input-speech-vol" class="text-white">Voice Speech Volume</label>
+            <span id="val-speech-vol" class="font-mono text-emerald-400">90%</span>
+          </div>
+          <input id="input-speech-vol" type="range" min="0" max="100" value="90" class="w-full accent-emerald-400 cursor-pointer" />
+        </div>
+
+        <div class="bg-cavern-950/80 p-4 rounded-2xl border border-cavern-800 flex items-center justify-between">
+          <div>
+            <div class="text-xs font-medium text-white">Built-in Spoken Guidance</div>
+            <div class="text-[11px] text-slate-400">Uses browser SpeechSynthesis</div>
+          </div>
+          <button id="btn-toggle-speech" class="btn-tactile px-3.5 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400 text-emerald-300 font-mono text-xs font-bold">
+            ENABLED
+          </button>
+        </div>
+      </div>
+
+      <!-- Hardware Tactile Refresh Delay & Echo Cooldown -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="bg-cavern-950/80 p-4 rounded-2xl border border-cavern-800 space-y-2">
+          <label for="select-refresh-delay" class="block text-xs font-medium text-white">
+            Simulated Tactile Hardware Refresh Delay
+          </label>
+          <p class="text-[11px] text-slate-400">Simulates physical pin actuation time for movement &amp; echoes.</p>
+          <select id="select-refresh-delay" class="w-full mt-1 rounded-xl bg-cavern-900 border border-cavern-700 px-3 py-2 text-xs text-white font-mono">
+            <option value="fast">Fast Prototype (150ms Move / 300ms Echo)</option>
+            <option value="realistic" selected>Realistic Tactile Display (200ms Move / 400ms Echo)</option>
+            <option value="deliberate">Deliberate Hardware (250ms Move / 500ms Echo)</option>
+          </select>
+        </div>
+
+        <div class="bg-cavern-950/80 p-4 rounded-2xl border border-cavern-800 space-y-2">
+          <label for="select-echo-cooldown" class="block text-xs font-medium text-white">
+            Echo Pulse Cooldown Duration
+          </label>
+          <p class="text-[11px] text-slate-400">Time required for sonar crystal recharge between pulses.</p>
+          <select id="select-echo-cooldown" class="w-full mt-1 rounded-xl bg-cavern-900 border border-cavern-700 px-3 py-2 text-xs text-white font-mono">
+            <option value="1200">Short Cooldown (1.2 Seconds)</option>
+            <option value="2000" selected>Standard Cooldown (2.0 Seconds)</option>
+            <option value="3200">Challenging Cooldown (3.2 Seconds)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Interactive Sound & Tactile Audio Test Bench -->
+      <div class="bg-cavern-950/90 p-4 sm:p-5 rounded-2xl border border-sonar-400/30 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="font-display font-bold text-sm uppercase tracking-wider text-sonar-400">Interactive Audio Cue Test Bench</h3>
+          <span class="text-[11px] font-mono text-slate-400">Click to learn each sound</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <button data-sound-test="footstep" class="btn-sound-test btn-tactile py-2.5 px-3 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-left flex items-center justify-between">
+            <span>1. Footstep Tap</span>
+            <span class="text-sonar-400">▶</span>
+          </button>
+          <button data-sound-test="wall" class="btn-sound-test btn-tactile py-2.5 px-3 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-left flex items-center justify-between">
+            <span>2. Wall Thud</span>
+            <span class="text-sonar-400">▶</span>
+          </button>
+          <button data-sound-test="echo" class="btn-sound-test btn-tactile py-2.5 px-3 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-left flex items-center justify-between">
+            <span>3. Echo Sonar Ping</span>
+            <span class="text-sonar-400">▶</span>
+          </button>
+          <button data-sound-test="treasure" class="btn-sound-test btn-tactile py-2.5 px-3 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-left flex items-center justify-between">
+            <span class="text-gold-400">4. Treasure Chime</span>
+            <span class="text-gold-400">▶</span>
+          </button>
+          <button data-sound-test="creature" class="btn-sound-test btn-tactile py-2.5 px-3 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-left flex items-center justify-between">
+            <span class="text-rose-400">5. Beetle Heartbeat</span>
+            <span class="text-rose-400">▶</span>
+          </button>
+          <button data-sound-test="exit" class="btn-sound-test btn-tactile py-2.5 px-3 rounded-xl bg-cavern-800 hover:bg-cavern-700 border border-cavern-600 text-xs font-medium text-left flex items-center justify-between">
+            <span class="text-emerald-400">6. Exit Portal Chord</span>
+            <span class="text-emerald-400">▶</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-cavern-700">
+        <button id="btn-reset-progress" class="text-xs text-rose-400 hover:underline font-mono">Reset Saved Progress</button>
+        <button id="btn-save-settings" class="btn-tactile px-6 py-2.5 rounded-xl bg-gold-500 hover:bg-gold-400 text-cavern-950 font-display font-bold text-sm">
+          Done &amp; Save
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL 4: ACHIEVEMENTS & EXPLORER STATS
+       ========================================== -->
+  <div id="modal-achievements" class="hidden fixed inset-0 z-50 bg-cavern-950/85 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-achievements-title">
+    <div class="tactile-casing rounded-3xl max-w-2xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto space-y-6">
+      <div class="flex items-center justify-between border-b border-cavern-700 pb-4">
+        <div>
+          <h2 id="modal-achievements-title" class="font-display font-bold text-2xl text-white">Explorer Badges &amp; Statistics</h2>
+          <p class="text-xs sm:text-sm text-slate-400">Saved automatically in your browser.</p>
+        </div>
+        <button id="btn-close-achievements" class="btn-tactile px-3.5 py-2 rounded-xl bg-cavern-800 hover:bg-cavern-700 text-slate-200 text-xs font-mono">Close (Esc)</button>
+      </div>
+
+      <!-- Lifetime Totals -->
+      <div class="grid grid-cols-3 gap-3 text-center">
+        <div class="bg-cavern-950 p-3.5 rounded-2xl border border-cavern-800">
+          <div class="text-xs text-slate-400 font-mono">Total Treasures</div>
+          <div id="stat-lifetime-treasures" class="font-mono font-bold text-2xl text-gold-400 mt-1">0</div>
+        </div>
+        <div class="bg-cavern-950 p-3.5 rounded-2xl border border-cavern-800">
+          <div class="text-xs text-slate-400 font-mono">Caverns Cleared</div>
+          <div id="stat-lifetime-caves" class="font-mono font-bold text-2xl text-emerald-400 mt-1">0</div>
+        </div>
+        <div class="bg-cavern-950 p-3.5 rounded-2xl border border-cavern-800">
+          <div class="text-xs text-slate-400 font-mono">Echoes Emitted</div>
+          <div id="stat-lifetime-echoes" class="font-mono font-bold text-2xl text-sonar-400 mt-1">0</div>
+        </div>
+      </div>
+
+      <!-- Badges List -->
+      <div id="container-achievements-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODAL 5: HOW TO PLAY & KEYBOARD GUIDE
+       ========================================== -->
+  <div id="modal-howto" class="hidden fixed inset-0 z-50 bg-cavern-950/85 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-howto-title">
+    <div class="tactile-casing rounded-3xl max-w-2xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto space-y-5">
+      <div class="flex items-center justify-between border-b border-cavern-700 pb-4">
+        <h2 id="modal-howto-title" class="font-display font-bold text-2xl text-white">How to Play Explora</h2>
+        <button id="btn-close-howto" class="btn-tactile px-3.5 py-2 rounded-xl bg-cavern-800 hover:bg-cavern-700 text-slate-200 text-xs font-mono">Close (Esc)</button>
+      </div>
+
+      <div class="space-y-4 text-sm text-slate-200 leading-relaxed">
+        <p>
+          <strong>Explora</strong> puts you inside an underground cave where light cannot reach. Instead of relying on sight, you explore using <strong>sound</strong> and a <strong>refreshable tactile grid</strong>.
+        </p>
+
+        <div class="bg-cavern-950 p-4 rounded-2xl border border-cavern-800 space-y-2">
+          <h3 class="font-display font-bold text-gold-400">Keyboard Shortcuts (Eyes-Free Play)</h3>
+          <ul class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-white">Up / W</kbd> — Step North</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-white">Down / S</kbd> — Step South</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-white">Left / A</kbd> — Step West</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-white">Right / D</kbd> — Step East</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-sonar-400">Space / E</kbd> — Emit Echo Pulse</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-gold-400">R</kbd> — Repeat Last Spoken Prompt</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-emerald-400">I / L</kbd> — Speak Position &amp; Status</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-slate-300">F</kbd> — Feel Current Tile &amp; Hints</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-slate-300">M</kbd> — Toggle Tactile Memory Mode</li>
+            <li><kbd class="bg-cavern-800 px-2 py-0.5 rounded text-slate-300">Esc</kbd> — Return to Main Menu</li>
+          </ul>
+        </div>
+
+        <div class="space-y-2">
+          <h3 class="font-display font-bold text-sonar-400">Understanding Echo Pulses</h3>
+          <p class="text-xs sm:text-sm text-slate-300">
+            When you press <kbd class="font-mono bg-cavern-800 px-1.5 py-0.5 rounded">Space</kbd>, your explorer sends out a sonar wave. After the tactile display refreshes its physical pins, you will hear directional audio cues (panned left for West, right for East) and a concise voice summary:
+          </p>
+          <ul class="list-disc list-inside text-xs sm:text-sm space-y-1 text-slate-300">
+            <li><strong class="text-gold-400">Metallic Chime:</strong> A hidden treasure is nearby! The chime is higher and brighter when closer.</li>
+            <li><strong class="text-rose-400">Rhythmic Heartbeat:</strong> A patrolling Cave Beetle is nearby. Wait a step or walk around it!</li>
+            <li><strong class="text-emerald-400">Resonant Portal Chord:</strong> The Cavern Exit is within range. Collect all treasures first to unlock it.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="w-full border-t border-cavern-800/80 bg-cavern-950/90 py-3 px-4 text-center text-xs text-slate-400">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <span><strong>Explora</strong> — Audio-Tactile Cave Exploration Game Prototype</span>
+      <span class="font-mono text-[11px]">Built with HTML5 • Three.js Tactile Pin Simulation • Procedural Web Audio • Web Speech API</span>
+    </div>
+  </footer>
+
+  <!-- ============================================================================
+       MODULAR ES6 APPLICATION ARCHITECTURE (Consolidated for Single-File Runtime)
+       ============================================================================ -->
+  <script type="module">
+    /**
+     * MODULE 1: CellTypes.js
+     * Strict enum constants representing cave grid objects.
+     */
+    const CELL_TYPES = Object.freeze({
+      EMPTY: 0,
+      WALL: 1,
+      TREASURE: 2,
+      CREATURE: 3,
+      EXIT: 4,
+      PLAYER: 5
+    });
+
+    /**
+     * MODULE 2: GameConfig.js
+     * Centralized configuration for levels, hardware simulation delays, echo parameters, and achievements.
+     */
+    const GAME_CONFIG = {
+      refreshProfiles: {
+        fast: { moveMs: 150, echoMs: 300, levelMs: 500, label: '150ms Move' },
+        realistic: { moveMs: 200, echoMs: 400, levelMs: 650, label: '200ms Move' },
+        deliberate: { moveMs: 250, echoMs: 500, levelMs: 800, label: '250ms Move' }
+      },
+      defaultSettings: {
+        masterVolume: 0.85,
+        sfxVolume: 0.90,
+        speechVolume: 0.90,
+        speechEnabled: true,
+        refreshProfile: 'realistic',
+        echoCooldownMs: 2000,
+        tactileMemoryMode: true // true = realistic hardware exploration (unexplored cells stay flat until visited or echoed)
+      },
+      levels: [
+        {
+          id: 1,
+          name: 'Whispering Grotto',
+          subtitle: 'Basic Movement & First Treasure',
+          gridSize: 6,
+          wallRatio: 0.16,
+          treasures: 1,
+          creatures: 0,
+          echoRadius: 3,
+          description: 'A gentle 6×6 limestone cavern with 1 Golden Chalice and wide pathways.'
+        },
+        {
+          id: 2,
+          name: 'Echoing Pillars',
+          subtitle: 'Winding Stone Columns',
+          gridSize: 6,
+          wallRatio: 0.22,
+          treasures: 2,
+          creatures: 0,
+          echoRadius: 3,
+          description: 'Navigate around carved stone pillars to recover 2 ancient relics.'
+        },
+        {
+          id: 3,
+          name: 'Crystal Labyrinth',
+          subtitle: 'Expanded 7×7 Tactile Matrix',
+          gridSize: 7,
+          wallRatio: 0.24,
+          treasures: 2,
+          creatures: 0,
+          echoRadius: 3,
+          description: 'A deeper 7×7 crystal maze requiring careful sonar triangulation.'
+        },
+        {
+          id: 4,
+          name: 'Shadow Burrow',
+          subtitle: 'Patrolling Cave Beetle',
+          gridSize: 7,
+          wallRatio: 0.22,
+          treasures: 2,
+          creatures: 1,
+          echoRadius: 3,
+          description: 'Listen for the rhythmic heartbeat of a patrolling Cave Beetle while hunting 2 treasures.'
+        },
+        {
+          id: 5,
+          name: 'The Deep Vault',
+          subtitle: 'Master 8×8 Tactile Cavern',
+          gridSize: 8,
+          wallRatio: 0.25,
+          treasures: 3,
+          creatures: 2,
+          echoRadius: 3,
+          description: 'The ultimate 8×8 underground vault with 3 treasures and 2 patrolling creatures.'
+        }
+      ],
+      achievements: [
+        { id: 'first_echo', title: 'Sonar Awakened', desc: 'Emit your very first Echo Pulse in a cavern.' },
+        { id: 'first_treasure', title: 'Relic Hunter', desc: 'Discover and collect your first underground treasure.' },
+        { id: 'tutorial_grad', title: 'Certified Tactile Explorer', desc: 'Complete the interactive audio-tactile tutorial.' },
+        { id: 'whisper_walker', title: 'Stone Whisperer', desc: 'Complete any level without bumping into a single wall.' },
+        { id: 'beetle_dodger', title: 'Heartbeat Listener', desc: 'Clear a cavern with patrolling Cave Beetles without getting startled.' },
+        { id: 'deep_master', title: 'Master of the Deep Vault', desc: 'Conquer all 5 campaign caverns in Explora.' }
+      ]
+    };
+
+    /**
+     * MODULE 3: SaveManager.js
+     * Handles persistent storage of settings, unlocked levels, statistics, and achievements in LocalStorage.
+     */
+    class SaveManager {
+      constructor() {
+        this.storageKey = 'explora_tactile_save_v1';
+        this.data = this.load();
+      }
+
+      getDefaultData() {
+        return {
+          unlockedLevel: 1,
+          completedLevels: [],
+          tutorialCompleted: false,
+          stats: {
+            totalTreasures: 0,
+            cavesCleared: 0,
+            totalEchoes: 0,
+            totalSteps: 0
+          },
+          achievements: [],
+          settings: { ...GAME_CONFIG.defaultSettings }
+        };
+      }
+
+      load() {
+        try {
+          const raw = localStorage.getItem(this.storageKey);
+          if (!raw) return this.getDefaultData();
+          const parsed = JSON.parse(raw);
+          return {
+            ...this.getDefaultData(),
+            ...parsed,
+            stats: { ...this.getDefaultData().stats, ...(parsed.stats || {}) },
+            settings: { ...GAME_CONFIG.defaultSettings, ...(parsed.settings || {}) }
+          };
+        } catch (err) {
+          console.warn('LocalStorage load fallback:', err);
+          return this.getDefaultData();
+        }
+      }
+
+      save() {
+        try {
+          localStorage.setItem(this.storageKey, JSON.stringify(this.data));
+        } catch (err) {
+          console.warn('LocalStorage save failed:', err);
+        }
+      }
+
+      resetProgress() {
+        const currentSettings = { ...this.data.settings };
+        this.data = this.getDefaultData();
+        this.data.settings = currentSettings;
+        this.save();
+      }
+
+      unlockAchievement(id) {
+        if (!this.data.achievements.includes(id)) {
+          this.data.achievements.push(id);
+          this.save();
+          return GAME_CONFIG.achievements.find(a => a.id === id) || null;
+        }
+        return null;
+      }
+    }
+
+    /**
+     * MODULE 4: AudioManager.js
+     * 100% Procedural Web Audio API synthesizer with directional StereoPannerNode cues.
+     */
+    class AudioManager {
+      constructor(saveManager) {
+        this.saveManager = saveManager;
+        this.ctx = null;
+        this.muted = false;
+        this.noiseBuffer = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+          this.createNoiseBuffer();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      createNoiseBuffer() {
+        if (!this.ctx) return;
+        const bufferSize = this.ctx.sampleRate * 0.5;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+        this.noiseBuffer = buffer;
+      }
+
+      getEffectiveGain(baseGain = 1.0) {
+        if (this.muted) return 0;
+        const s = this.saveManager.data.settings;
+        return Math.max(0, Math.min(1, baseGain * s.masterVolume * s.sfxVolume));
+      }
+
+      createPanner(panValue = 0) {
+        if (!this.ctx) return null;
+        if (this.ctx.createStereoPanner) {
+          const panner = this.ctx.createStereoPanner();
+          panner.pan.setValueAtTime(Math.max(-0.9, Math.min(0.9, panValue)), this.ctx.currentTime);
+          panner.connect(this.ctx.destination);
+          return panner;
+        }
+        return this.ctx.destination;
+      }
+
+      /**
+       * Subtle mechanical pin-matrix actuation clicks when the tactile display refreshes
+       */
+      playTactilePinRefresh(durationMs = 200) {
+        this.init();
+        const vol = this.getEffectiveGain(0.18);
+        if (vol <= 0 || !this.ctx) return;
+
+        const clicks = Math.min(5, Math.max(2, Math.floor(durationMs / 65)));
+        for (let i = 0; i < clicks; i++) {
+          const startTime = this.ctx.currentTime + (i * (durationMs / 1000)) / clicks;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(420 + (i % 2) * 90, startTime);
+          osc.frequency.exponentialRampToValueAtTime(160, startTime + 0.025);
+
+          gain.gain.setValueAtTime(vol * 0.6, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.028);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 0.03);
+        }
+      }
+
+      /**
+       * Crisp cavern footstep sound
+       */
+      playFootstep(pan = 0) {
+        this.init();
+        const vol = this.getEffectiveGain(0.45);
+        if (vol <= 0 || !this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const dest = this.createPanner(pan);
+
+        // Filtered noise crunch
+        if (this.noiseBuffer) {
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = this.noiseBuffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(680, now);
+          filter.Q.setValueAtTime(2.5, now);
+
+          const nGain = this.ctx.createGain();
+          nGain.gain.setValueAtTime(vol * 0.5, now);
+          nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+
+          noise.connect(filter);
+          filter.connect(nGain);
+          nGain.connect(dest);
+          noise.start(now);
+          noise.stop(now + 0.08);
+        }
+
+        // Low stone tap
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(145, now);
+        osc.frequency.exponentialRampToValueAtTime(58, now + 0.085);
+
+        gain.gain.setValueAtTime(vol * 0.8, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.start(now);
+        osc.stop(now + 0.095);
+      }
+
+      /**
+       * Low-frequency resonant thud when bumping into a wall or border
+       */
+      playWallCollision(pan = 0) {
+        this.init();
+        const vol = this.getEffectiveGain(0.75);
+        if (vol <= 0 || !this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const dest = this.createPanner(pan);
+
+        const osc = this.ctx.createOscillator();
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(95, now);
+        osc.frequency.exponentialRampToValueAtTime(36, now + 0.24);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(190, now);
+
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(dest);
+        osc.start(now);
+        osc.stop(now + 0.27);
+      }
+
+      /**
+       * Sonar Echo Pulse emission sweep
+       */
+      playEchoPulseEmit() {
+        this.init();
+        const vol = this.getEffectiveGain(0.55);
+        if (vol <= 0 || !this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(1040, now + 0.16);
+        osc.frequency.exponentialRampToValueAtTime(380, now + 0.36);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(vol, now + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      }
+
+      /**
+       * Metallic harmonic chime for Treasure detection (pitch & volume scale with closeness)
+       */
+      playTreasurePing(distance = 1, pan = 0, delaySec = 0) {
+        this.init();
+        const closeness = Math.max(0.25, 1 - (distance - 1) * 0.25);
+        const vol = this.getEffectiveGain(0.65 * closeness);
+        if (vol <= 0 || !this.ctx) return;
+
+        const start = this.ctx.currentTime + delaySec;
+        const dest = this.createPanner(pan);
+        const baseFreq = 880 + (4 - Math.min(3, distance)) * 130;
+
+        [1, 1.5, 2].forEach((mult, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = idx === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(baseFreq * mult, start + idx * 0.045);
+
+          gain.gain.setValueAtTime(vol / (idx + 1), start + idx * 0.045);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.48 + idx * 0.05);
+
+          osc.connect(gain);
+          gain.connect(dest);
+          osc.start(start + idx * 0.045);
+          osc.stop(start + 0.55 + idx * 0.05);
+        });
+      }
+
+      /**
+       * Short hollow stone knock for Wall detection during Echo
+       */
+      playWallEchoKnock(distance = 1, pan = 0, delaySec = 0) {
+        this.init();
+        const closeness = Math.max(0.25, 1 - (distance - 1) * 0.25);
+        const vol = this.getEffectiveGain(0.45 * closeness);
+        if (vol <= 0 || !this.ctx) return;
+
+        const start = this.ctx.currentTime + delaySec;
+        const dest = this.createPanner(pan);
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(190, start);
+        osc.frequency.exponentialRampToValueAtTime(75, start + 0.09);
+
+        gain.gain.setValueAtTime(vol, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.1);
+
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.start(start);
+        osc.stop(start + 0.11);
+      }
+
+      /**
+       * Rhythmic double-beat low pulsing heartbeat for Creature detection
+       */
+      playCreatureHeartbeat(distance = 1, pan = 0, delaySec = 0) {
+        this.init();
+        const closeness = Math.max(0.3, 1 - (distance - 1) * 0.25);
+        const vol = this.getEffectiveGain(0.75 * closeness);
+        if (vol <= 0 || !this.ctx) return;
+
+        const start = this.ctx.currentTime + delaySec;
+        const dest = this.createPanner(pan);
+
+        [0, 0.14].forEach((offset, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(idx === 0 ? 110 : 88, start + offset);
+          osc.frequency.exponentialRampToValueAtTime(42, start + offset + 0.11);
+
+          gain.gain.setValueAtTime(vol * (idx === 0 ? 1 : 0.75), start + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + offset + 0.12);
+
+          osc.connect(gain);
+          gain.connect(dest);
+          osc.start(start + offset);
+          osc.stop(start + offset + 0.13);
+        });
+      }
+
+      /**
+       * Warm resonant fifth harmonic chord for Exit portal detection
+       */
+      playExitTone(distance = 1, pan = 0, delaySec = 0) {
+        this.init();
+        const closeness = Math.max(0.3, 1 - (distance - 1) * 0.22);
+        const vol = this.getEffectiveGain(0.55 * closeness);
+        if (vol <= 0 || !this.ctx) return;
+
+        const start = this.ctx.currentTime + delaySec;
+        const dest = this.createPanner(pan);
+
+        [330, 495, 660].forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, start);
+
+          gain.gain.setValueAtTime(0.001, start);
+          gain.gain.linearRampToValueAtTime(vol / (idx + 1.2), start + 0.06);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.55);
+
+          osc.connect(gain);
+          gain.connect(dest);
+          osc.start(start);
+          osc.stop(start + 0.58);
+        });
+      }
+
+      /**
+       * Joyful ascending arpeggio when collecting a treasure
+       */
+      playTreasureCollect() {
+        this.init();
+        const vol = this.getEffectiveGain(0.7);
+        if (vol <= 0 || !this.ctx) return;
+
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+          const start = this.ctx.currentTime + idx * 0.085;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, start);
+
+          gain.gain.setValueAtTime(vol, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.36);
+        });
+      }
+
+      /**
+       * Triumphant chord progression on Level Completion
+       */
+      playLevelComplete() {
+        this.init();
+        const vol = this.getEffectiveGain(0.75);
+        if (vol <= 0 || !this.ctx) return;
+
+        const chordSeq = [
+          { freqs: [261.63, 329.63, 392.00], time: 0, dur: 0.25 },
+          { freqs: [293.66, 369.99, 440.00], time: 0.22, dur: 0.25 },
+          { freqs: [329.63, 415.30, 493.88], time: 0.44, dur: 0.25 },
+          { freqs: [523.25, 659.25, 783.99, 1046.50], time: 0.68, dur: 0.85 }
+        ];
+
+        chordSeq.forEach(chord => {
+          chord.freqs.forEach((f, idx) => {
+            const start = this.ctx.currentTime + chord.time;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+            osc.frequency.setValueAtTime(f, start);
+
+            gain.gain.setValueAtTime(vol / chord.freqs.length, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + chord.dur);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(start);
+            osc.stop(start + chord.dur + 0.02);
+          });
+        });
+      }
+
+      /**
+       * Soft busy double-tick when Echo is on cooldown or display is still refreshing
+       */
+      playCooldownBusy() {
+        this.init();
+        const vol = this.getEffectiveGain(0.4);
+        if (vol <= 0 || !this.ctx) return;
+
+        [0, 0.08].forEach(offset => {
+          const start = this.ctx.currentTime + offset;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(160, start);
+
+          gain.gain.setValueAtTime(vol * 0.5, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.05);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.055);
+        });
+      }
+
+      /**
+       * Subtle accessible UI button click
+       */
+      playUiClick(high = false) {
+        this.init();
+        const vol = this.getEffectiveGain(0.3);
+        if (vol <= 0 || !this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(high ? 720 : 520, now);
+        osc.frequency.exponentialRampToValueAtTime(high ? 880 : 340, now + 0.045);
+
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.055);
+      }
+    }
+
+    /**
+     * MODULE 5: SpeechManager.js
+     * Coordinates concise spoken feedback via Web Speech API and updates the live transcript & ARIA regions.
+     */
+    class SpeechManager {
+      constructor(saveManager, audioManager) {
+        this.saveManager = saveManager;
+        this.audioManager = audioManager;
+        this.synth = window.speechSynthesis || null;
+        this.lastSpokenText = 'Welcome to Explora. Press 1 for the interactive audio tutorial, or 2 to start your adventure.';
+        this.speechTimer = null;
+        this.logContainer = document.getElementById('log-audio-transcript');
+        this.srPolite = document.getElementById('sr-live-polite');
+      }
+
+      /**
+       * Speak a concise message after an optional delay (so sound effects are heard clearly first)
+       */
+      speak(text, { delayMs = 0, interrupt = true, logTag = 'VOICE' } = {}) {
+        if (!text) return;
+        this.lastSpokenText = text;
+        this.appendTranscript(text, logTag);
+
+        // Update ARIA live region for screen readers
+        if (this.srPolite) {
+          this.srPolite.textContent = text;
+        }
+
+        const settings = this.saveManager.data.settings;
+        if (!settings.speechEnabled || this.audioManager.muted || !this.synth) return;
+
+        if (this.speechTimer) {
+          clearTimeout(this.speechTimer);
+          this.speechTimer = null;
+        }
+
+        this.speechTimer = setTimeout(() => {
+          try {
+            if (interrupt) {
+              this.synth.cancel();
+            }
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.volume = Math.max(0, Math.min(1, settings.masterVolume * settings.speechVolume));
+            utter.rate = 1.02;
+            utter.pitch = 1.0;
+            this.synth.speak(utter);
+          } catch (e) {
+            console.warn('SpeechSynthesis error:', e);
+          }
+        }, delayMs);
+      }
+
+      repeatLast() {
+        this.speak(this.lastSpokenText, { delayMs: 50, interrupt: true, logTag: 'REPEAT' });
+      }
+
+      appendTranscript(text, tag = 'AUDIO') {
+        if (!this.logContainer) return;
+        const item = document.createElement('div');
+        item.className = 'py-1 border-b border-cavern-800/80 last:border-none flex items-start gap-2';
+
+        const badgeColor =
+          tag === 'ECHO' ? 'text-sonar-400 border-sonar-400/30 bg-sonar-500/10' :
+          tag === 'TREASURE' ? 'text-gold-400 border-gold-400/30 bg-gold-500/10' :
+          tag === 'HAZARD' ? 'text-rose-400 border-rose-400/30 bg-rose-500/10' :
+          'text-emerald-400 border-emerald-400/30 bg-emerald-500/10';
+
+        item.innerHTML = `
+          <span class="font-mono text-[10px] px-1.5 py-0.5 rounded border ${badgeColor} shrink-0 mt-0.5">${tag}</span>
+          <span class="text-slate-200 leading-snug">${text}</span>
+        `;
+        this.logContainer.prepend(item);
+
+        // Keep transcript tidy (max 25 entries)
+        while (this.logContainer.children.length > 25) {
+          this.logContainer.removeChild(this.logContainer.lastChild);
+        }
+      }
+    }
+
+    /**
+     * MODULE 6: Pathfinding.js
+     * Breadth-First Search (BFS) utility to verify cave solvability and calculate distances.
+     */
+    class Pathfinding {
+      static isWalkable(grid, x, y) {
+        const size = grid.length;
+        if (x < 0 || y < 0 || x >= size || y >= size) return false;
+        return grid[y][x] !== CELL_TYPES.WALL;
+      }
+
+      /**
+       * Returns true if target (tx, ty) is reachable from (sx, sy) without passing through walls.
+       */
+      static hasPath(grid, sx, sy, tx, ty) {
+        const size = grid.length;
+        const visited = Array.from({ length: size }, () => Array(size).fill(false));
+        const queue = [[sx, sy]];
+        visited[sy][sx] = true;
+
+        const dirs = [
+          [0, -1], [0, 1], [-1, 0], [1, 0]
+        ];
+
+        while (queue.length > 0) {
+          const [cx, cy] = queue.shift();
+          if (cx === tx && cy === ty) return true;
+
+          for (const [dx, dy] of dirs) {
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (this.isWalkable(grid, nx, ny) && !visited[ny][nx]) {
+              visited[ny][nx] = true;
+              queue.push([nx, ny]);
+            }
+          }
+        }
+        return false;
+      }
+    }
+
+    /**
+     * MODULE 7: CaveGenerator.js
+     * Generates deterministic tutorial caves and verified 100%-solvable procedural caves.
+     */
+    class CaveGenerator {
+      /**
+       * Fixed 6x6 self-teaching layout for the 6-step interactive tutorial.
+       */
+      static createTutorialCave() {
+        const size = 6;
+        const grid = Array.from({ length: size }, () => Array(size).fill(CELL_TYPES.EMPTY));
+
+        // Add perimeter / guiding walls so Step 3 (moving North into a wall) is guaranteed
+        const walls = [
+          [1, 0], [2, 0], [3, 0], [4, 0],
+          [0, 2], [1, 2], [2, 2],
+          [5, 1], [5, 2], [0, 4], [2, 4], [3, 4]
+        ];
+        walls.forEach(([x, y]) => { grid[y][x] = CELL_TYPES.WALL; });
+
+        const playerStart = { x: 1, y: 1 };
+        const treasures = [{ x: 4, y: 2, collected: false }];
+        const exitPos = { x: 4, y: 4 };
+
+        grid[treasures[0].y][treasures[0].x] = CELL_TYPES.TREASURE;
+        grid[exitPos.y][exitPos.x] = CELL_TYPES.EXIT;
+
+        return {
+          size,
+          grid,
+          playerStart,
+          treasures,
+          creatures: [],
+          exitPos
+        };
+      }
+
+      /**
+       * Procedural cave generator guaranteed solvable via BFS verification.
+       */
+      static generateLevelCave(levelConfig) {
+        const size = levelConfig.gridSize || 6;
+        const maxAttempts = 80;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const grid = Array.from({ length: size }, () => Array(size).fill(CELL_TYPES.EMPTY));
+          const playerStart = { x: 0, y: size - 1 }; // Bottom-West corner start
+
+          // Place internal walls
+          const totalCells = size * size;
+          const wallCount = Math.floor(totalCells * (levelConfig.wallRatio || 0.2));
+          let placedWalls = 0;
+          let safety = 0;
+
+          while (placedWalls < wallCount && safety < 200) {
+            safety++;
+            const rx = Math.floor(Math.random() * size);
+            const ry = Math.floor(Math.random() * size);
+            if ((rx === playerStart.x && ry === playerStart.y) ||
+                (Math.abs(rx - playerStart.x) + Math.abs(ry - playerStart.y) <= 1)) {
+              continue;
+            }
+            if (grid[ry][rx] === CELL_TYPES.EMPTY) {
+              grid[ry][rx] = CELL_TYPES.WALL;
+              placedWalls++;
+            }
+          }
+
+          // Place Exit in upper-east quadrant
+          const exitCandidates = [];
+          for (let y = 0; y < Math.ceil(size / 2); y++) {
+            for (let x = Math.floor(size / 2); x < size; x++) {
+              if (grid[y][x] === CELL_TYPES.EMPTY && (x !== playerStart.x || y !== playerStart.y)) {
+                exitCandidates.push({ x, y });
+              }
+            }
+          }
+          if (exitCandidates.length === 0) continue;
+          const exitPos = exitCandidates[Math.floor(Math.random() * exitCandidates.length)];
+          grid[exitPos.y][exitPos.x] = CELL_TYPES.EXIT;
+
+          // Verify Exit is reachable from playerStart
+          if (!Pathfinding.hasPath(grid, playerStart.x, playerStart.y, exitPos.x, exitPos.y)) {
+            continue;
+          }
+
+          // Place Treasures at reachable locations at least 2 steps from playerStart
+          const treasures = [];
+          const emptyReachable = [];
+          for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+              const dist = Math.abs(x - playerStart.x) + Math.abs(y - playerStart.y);
+              if (grid[y][x] === CELL_TYPES.EMPTY && dist >= 2 &&
+                  Pathfinding.hasPath(grid, playerStart.x, playerStart.y, x, y)) {
+                emptyReachable.push({ x, y });
+              }
+            }
+          }
+
+          if (emptyReachable.length < levelConfig.treasures + (levelConfig.creatures || 0)) {
+            continue;
+          }
+
+          // Shuffle reachable candidates
+          emptyReachable.sort(() => Math.random() - 0.5);
+
+          for (let t = 0; t < levelConfig.treasures; t++) {
+            const spot = emptyReachable.pop();
+            grid[spot.y][spot.x] = CELL_TYPES.TREASURE;
+            treasures.push({ x: spot.x, y: spot.y, collected: false });
+          }
+
+          // Place Creatures (patrolling Cave Beetles) at least 3 steps away from start
+          const creatures = [];
+          const creatureCount = levelConfig.creatures || 0;
+          for (const spot of emptyReachable) {
+            if (creatures.length >= creatureCount) break;
+            const dist = Math.abs(spot.x - playerStart.x) + Math.abs(spot.y - playerStart.y);
+            if (dist >= 3 && grid[spot.y][spot.x] === CELL_TYPES.EMPTY) {
+              creatures.push({
+                id: creatures.length + 1,
+                x: spot.x,
+                y: spot.y,
+                dirX: Math.random() < 0.5 ? 1 : 0,
+                dirY: 0
+              });
+            }
+          }
+          if (creatures.length < creatureCount) continue;
+
+          return {
+            size,
+            grid,
+            playerStart,
+            treasures,
+            creatures,
+            exitPos
+          };
+        }
+
+        // Guaranteed fallback cave if random attempts ever fail
+        return this.createTutorialCave();
+      }
+    }
+
+    /**
+     * MODULE 8: TactileDisplay3D.js
+     * Three.js r128 3D Refreshable Tactile Pin Matrix Simulation.
+     * Renders distinct raised 3D tactile patterns for each cell and animates physical pin actuation.
+     */
+    class TactileDisplay3D {
+      constructor(containerId) {
+        this.container = document.getElementById(containerId);
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.gridGroup = null;
+        this.cellMeshes = []; // 2D array of cell groups with targetY for hardware pin actuation
+        this.gridSize = 6;
+        this.angledView = true;
+
+        // Orbit / Camera spherical controls
+        this.isDragging = false;
+        this.prevMouse = { x: 0, y: 0 };
+        this.camTheta = 0;
+        this.camPhi = 0.68; // Angled 3D relief default
+        this.camRadius = 11.5;
+
+        this.initThree();
+      }
+
+      initThree() {
+        if (!this.container || typeof THREE === 'undefined') return;
+
+        const w = this.container.clientWidth || 600;
+        const h = this.container.clientHeight || 400;
+
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x070a10);
+
+        this.camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 100);
+        this.updateCameraPosition();
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        this.renderer.setSize(w, h);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.container.appendChild(this.renderer.domElement);
+
+        // Lighting tailored to highlight raised 3D tactile pin relief
+        const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.65);
+        this.scene.add(ambientLight);
+
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.9);
+        dirLight1.position.set(6, 14, 8);
+        this.scene.add(dirLight1);
+
+        const warmRimLight = new THREE.DirectionalLight(0xf4b942, 0.35);
+        warmRimLight.position.set(-8, 8, -6);
+        this.scene.add(warmRimLight);
+
+        this.gridGroup = new THREE.Group();
+        this.scene.add(this.gridGroup);
+
+        this.bindInteractionEvents();
+        window.addEventListener('resize', () => this.handleResize());
+      }
+
+      bindInteractionEvents() {
+        const dom = this.renderer.domElement;
+
+        dom.addEventListener('mousedown', (e) => {
+          this.isDragging = true;
+          this.prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        window.addEventListener('mouseup', () => {
+          this.isDragging = false;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (!this.isDragging) return;
+          const dx = e.clientX - this.prevMouse.x;
+          const dy = e.clientY - this.prevMouse.y;
+          this.prevMouse = { x: e.clientX, y: e.clientY };
+
+          this.camTheta -= dx * 0.007;
+          this.camPhi = Math.max(0.08, Math.min(1.15, this.camPhi - dy * 0.007));
+          this.updateCameraPosition();
+        });
+
+        // Touch drag support for mobile/tablet
+        dom.addEventListener('touchstart', (e) => {
+          if (e.touches.length === 1) {
+            this.isDragging = true;
+            this.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => {
+          this.isDragging = false;
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+          if (!this.isDragging || e.touches.length !== 1) return;
+          const dx = e.touches[0].clientX - this.prevMouse.x;
+          const dy = e.touches[0].clientY - this.prevMouse.y;
+          this.prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+          this.camTheta -= dx * 0.007;
+          this.camPhi = Math.max(0.08, Math.min(1.15, this.camPhi - dy * 0.007));
+          this.updateCameraPosition();
+        }, { passive: true });
+
+        dom.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          this.camRadius = Math.max(7.5, Math.min(16, this.camRadius + e.deltaY * 0.005));
+          this.updateCameraPosition();
+        }, { passive: false });
+      }
+
+      toggleCameraPreset() {
+        this.angledView = !this.angledView;
+        this.camTheta = 0;
+        this.camPhi = this.angledView ? 0.68 : 0.05;
+        this.updateCameraPosition();
+        return this.angledView ? 'Angled 3D Relief' : 'Top-Down Tactile';
+      }
+
+      updateCameraPosition() {
+        if (!this.camera) return;
+        const x = this.camRadius * Math.sin(this.camPhi) * Math.sin(this.camTheta);
+        const y = this.camRadius * Math.cos(this.camPhi);
+        const z = this.camRadius * Math.sin(this.camPhi) * Math.cos(this.camTheta);
+        this.camera.position.set(x, y, z);
+        this.camera.lookAt(0, 0, 0);
+      }
+
+      handleResize() {
+        if (!this.container || !this.renderer || !this.camera) return;
+        const w = this.container.clientWidth;
+        const h = this.container.clientHeight;
+        if (w === 0 || h === 0) return;
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(w, h);
+      }
+
+      /**
+       * Rebuilds the physical tactile matrix board when starting a cave of size NxN.
+       */
+      buildBoard(size) {
+        this.gridSize = size;
+        this.camRadius = size <= 6 ? 10.5 : size === 7 ? 12.0 : 13.5;
+        this.updateCameraPosition();
+
+        // Clear previous meshes
+        while (this.gridGroup.children.length > 0) {
+          this.gridGroup.remove(this.gridGroup.children[0]);
+        }
+        this.cellMeshes = [];
+
+        const spacing = 1.12;
+        const boardSpan = size * spacing;
+        const offset = (boardSpan - spacing) / 2;
+
+        // Hardware Base Casing Slab
+        const baseGeo = new THREE.BoxGeometry(boardSpan + 0.9, 0.45, boardSpan + 0.9);
+        const baseMat = new THREE.MeshStandardMaterial({
+          color: 0x101829,
+          roughness: 0.6,
+          metalness: 0.3
+        });
+        const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+        baseMesh.position.y = -0.28;
+        this.gridGroup.add(baseMesh);
+
+        // Outer metallic bevel rim
+        const rimGeo = new THREE.BoxGeometry(boardSpan + 1.1, 0.22, boardSpan + 1.1);
+        const rimMat = new THREE.MeshStandardMaterial({
+          color: 0x243454,
+          roughness: 0.4,
+          metalness: 0.5
+        });
+        const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+        rimMesh.position.y = -0.35;
+        this.gridGroup.add(rimMesh);
+
+        // Create individual tactile cell sockets & actuatable pin groups
+        for (let y = 0; y < size; y++) {
+          const row = [];
+          for (let x = 0; x < size; x++) {
+            const worldX = x * spacing - offset;
+            const worldZ = y * spacing - offset;
+
+            // Recessed cell socket
+            const socketGeo = new THREE.BoxGeometry(0.98, 0.1, 0.98);
+            const socketMat = new THREE.MeshStandardMaterial({
+              color: 0x17223b,
+              roughness: 0.8
+            });
+            const socketMesh = new THREE.Mesh(socketGeo, socketMat);
+            socketMesh.position.set(worldX, -0.02, worldZ);
+            this.gridGroup.add(socketMesh);
+
+            // Dynamic pin group that animates vertically during tactile refreshes
+            const pinGroup = new THREE.Group();
+            pinGroup.position.set(worldX, 0, worldZ);
+            this.gridGroup.add(pinGroup);
+
+            row.push({
+              x,
+              y,
+              socketMesh,
+              pinGroup,
+              currentType: -1,
+              targetScaleY: 1,
+              currentScaleY: 0.01
+            });
+          }
+          this.cellMeshes.push(row);
+        }
+      }
+
+      /**
+       * Populates a cell's 3D tactile pin geometry based on its tactile state.
+       */
+      populateCellTactileGeometry(cellObj, displayType, isUnexplored) {
+        const group = cellObj.pinGroup;
+        while (group.children.length > 0) {
+          group.remove(group.children[0]);
+        }
+
+        // Unexplored cell in Tactile Memory Mode: flat standby dot
+        if (isUnexplored) {
+          const dotGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.06, 12);
+          const dotMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+          const dot = new THREE.Mesh(dotGeo, dotMat);
+          dot.position.y = 0.03;
+          group.add(dot);
+          cellObj.socketMesh.material.color.setHex(0x11192c);
+          return;
+        }
+
+        cellObj.socketMesh.material.color.setHex(0x1c2b4b);
+
+        switch (displayType) {
+          case CELL_TYPES.EMPTY: {
+            // Flat explored tile with small raised reference locator dot
+            const dotGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.1, 16);
+            const dotMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.5 });
+            const dot = new THREE.Mesh(dotGeo, dotMat);
+            dot.position.y = 0.05;
+            group.add(dot);
+            break;
+          }
+
+          case CELL_TYPES.WALL: {
+            // Raised solid tactile block + 3x3 tactile ridge pins on top
+            const blockGeo = new THREE.BoxGeometry(0.84, 0.42, 0.84);
+            const blockMat = new THREE.MeshStandardMaterial({
+              color: 0x64748b,
+              roughness: 0.45,
+              metalness: 0.2
+            });
+            const block = new THREE.Mesh(blockGeo, blockMat);
+            block.position.y = 0.21;
+            group.add(block);
+
+            const ridgeGeo = new THREE.CylinderGeometry(0.065, 0.065, 0.14, 10);
+            const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.3 });
+            for (let rx = -1; rx <= 1; rx++) {
+              for (let rz = -1; rz <= 1; rz++) {
+                const pin = new THREE.Mesh(ridgeGeo, ridgeMat);
+                pin.position.set(rx * 0.24, 0.46, rz * 0.24);
+                group.add(pin);
+              }
+            }
+            break;
+          }
+
+          case CELL_TYPES.TREASURE: {
+            // Raised Octagonal/Diamond Gem Pattern + Concentric Gold Ring
+            const ringGeo = new THREE.TorusGeometry(0.32, 0.055, 12, 24);
+            const goldMat = new THREE.MeshStandardMaterial({
+              color: 0xf4b942,
+              emissive: 0x784b08,
+              roughness: 0.25,
+              metalness: 0.65
+            });
+            const ring = new THREE.Mesh(ringGeo, goldMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.12;
+            group.add(ring);
+
+            const gemGeo = new THREE.OctahedronGeometry(0.24, 0);
+            const gem = new THREE.Mesh(gemGeo, goldMat);
+            gem.position.y = 0.34;
+            gem.name = 'animatedGem';
+            group.add(gem);
+            break;
+          }
+
+          case CELL_TYPES.CREATURE: {
+            // Irregular cluster of 5 spiky tactile pins (Crimson/Amber)
+            const spikeMat = new THREE.MeshStandardMaterial({
+              color: 0xf43f5e,
+              emissive: 0x691222,
+              roughness: 0.35
+            });
+            const offsets = [
+              [0, 0, 0.48],
+              [-0.22, -0.22, 0.34],
+              [0.22, -0.22, 0.38],
+              [-0.22, 0.22, 0.36],
+              [0.22, 0.22, 0.32]
+            ];
+            offsets.forEach(([ox, oz, h]) => {
+              const coneGeo = new THREE.ConeGeometry(0.11, h, 8);
+              const cone = new THREE.Mesh(coneGeo, spikeMat);
+              cone.position.set(ox, h / 2, oz);
+              group.add(cone);
+            });
+            break;
+          }
+
+          case CELL_TYPES.EXIT: {
+            // Distinctive Archway / 4-Corner Pillar Border Frame Marker
+            const emeraldMat = new THREE.MeshStandardMaterial({
+              color: 0x10b981,
+              emissive: 0x064e3b,
+              roughness: 0.3
+            });
+            const padGeo = new THREE.CylinderGeometry(0.36, 0.38, 0.12, 20);
+            const pad = new THREE.Mesh(padGeo, emeraldMat);
+            pad.position.y = 0.06;
+            group.add(pad);
+
+            const pillarGeo = new THREE.BoxGeometry(0.12, 0.45, 0.12);
+            [[-0.28, -0.28], [0.28, -0.28], [-0.28, 0.28], [0.28, 0.28]].forEach(([px, pz]) => {
+              const pillar = new THREE.Mesh(pillarGeo, emeraldMat);
+              pillar.position.set(px, 0.22, pz);
+              group.add(pillar);
+            });
+            break;
+          }
+
+          case CELL_TYPES.PLAYER: {
+            // Clearly distinguishable Central Cylindrical Beacon + Tactile Outer Ring
+            const cyanMat = new THREE.MeshStandardMaterial({
+              color: 0x38bdf8,
+              emissive: 0x0c4a6e,
+              roughness: 0.25,
+              metalness: 0.4
+            });
+            const outerRingGeo = new THREE.TorusGeometry(0.35, 0.06, 12, 24);
+            const outerRing = new THREE.Mesh(outerRingGeo, cyanMat);
+            outerRing.rotation.x = Math.PI / 2;
+            outerRing.position.y = 0.12;
+            group.add(outerRing);
+
+            const beaconGeo = new THREE.CylinderGeometry(0.18, 0.22, 0.56, 20);
+            const beacon = new THREE.Mesh(beaconGeo, cyanMat);
+            beacon.position.y = 0.28;
+            group.add(beacon);
+
+            const capGeo = new THREE.SphereGeometry(0.18, 16, 16);
+            const cap = new THREE.Mesh(capGeo, cyanMat);
+            cap.position.y = 0.56;
+            group.add(cap);
+            break;
+          }
+        }
+      }
+
+      /**
+       * Updates the tactile display state, triggering physical vertical pin actuation on changed cells.
+       */
+      refreshTactileState({ grid, player, creatures, revealedGrid, tactileMemoryMode }) {
+        const size = grid.length;
+        if (this.cellMeshes.length !== size) {
+          this.buildBoard(size);
+        }
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const cellObj = this.cellMeshes[y][x];
+            let effectiveType = grid[y][x];
+
+            // Overlay dynamic creatures and player
+            const hasCreature = creatures.some(c => c.x === x && c.y === y);
+            if (hasCreature) effectiveType = CELL_TYPES.CREATURE;
+            if (player.x === x && player.y === y) effectiveType = CELL_TYPES.PLAYER;
+
+            const isUnexplored = tactileMemoryMode && !revealedGrid[y][x] && !(player.x === x && player.y === y);
+            const stateSignature = isUnexplored ? -99 : effectiveType;
+
+            if (cellObj.currentType !== stateSignature) {
+              cellObj.currentType = stateSignature;
+              this.populateCellTactileGeometry(cellObj, effectiveType, isUnexplored);
+              // Trigger physical pin rise animation from recessed state
+              cellObj.currentScaleY = 0.05;
+              cellObj.pinGroup.scale.y = 0.05;
+            }
+          }
+        }
+      }
+
+      /**
+       * Renders a single animation frame (smooth pin actuation + subtle gem rotation)
+       */
+      renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+
+        for (let y = 0; y < this.cellMeshes.length; y++) {
+          for (let x = 0; x < this.cellMeshes[y].length; x++) {
+            const cell = this.cellMeshes[y][x];
+            if (Math.abs(cell.currentScaleY - cell.targetScaleY) > 0.01) {
+              cell.currentScaleY += (cell.targetScaleY - cell.currentScaleY) * 0.22;
+              cell.pinGroup.scale.y = cell.currentScaleY;
+            }
+            const gem = cell.pinGroup.getObjectByName('animatedGem');
+            if (gem) {
+              gem.rotation.y += 0.02;
+            }
+          }
+        }
+
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    /**
+     * MODULE 9: EchoSystem.js
+     * Scans nearby grid cells within radius, schedules directional spatial audio pings,
+     * reveals scanned cells on the tactile matrix, and crafts a clear spoken summary.
+     */
+    class EchoSystem {
+      constructor(audioManager, speechManager) {
+        this.audioManager = audioManager;
+        this.speechManager = speechManager;
+      }
+
+      /**
+       * Helper to convert (dx, dy) into human-friendly compass direction
+       */
+      static getCompassDirection(dx, dy) {
+        if (dx === 0 && dy < 0) return 'North';
+        if (dx === 0 && dy > 0) return 'South';
+        if (dx > 0 && dy === 0) return 'East';
+        if (dx < 0 && dy === 0) return 'West';
+        if (dx > 0 && dy < 0) return 'Northeast';
+        if (dx < 0 && dy < 0) return 'Northwest';
+        if (dx > 0 && dy > 0) return 'Southeast';
+        if (dx < 0 && dy > 0) return 'Southwest';
+        return 'here';
+      }
+
+      /**
+       * Perform an Echo scan around (px, py) with configurable radius.
+       */
+      executeEchoScan({ grid, player, creatures, radius, revealedGrid }) {
+        const size = grid.length;
+        const detectedTreasures = [];
+        const detectedCreatures = [];
+        const detectedExits = [];
+        const adjacentWalls = [];
+
+        for (let y = Math.max(0, player.y - radius); y <= Math.min(size - 1, player.y + radius); y++) {
+          for (let x = Math.max(0, player.x - radius); x <= Math.min(size - 1, player.x + radius); x++) {
+            const dx = x - player.x;
+            const dy = y - player.y;
+            const manhattan = Math.abs(dx) + Math.abs(dy);
+            if (manhattan === 0 || manhattan > radius) continue;
+
+            // Reveal cell in Tactile Memory
+            revealedGrid[y][x] = true;
+
+            const pan = Math.max(-0.85, Math.min(0.85, dx / radius));
+            const dir = EchoSystem.getCompassDirection(dx, dy);
+            const cell = grid[y][x];
+
+            // Check creatures first
+            const creatureHere = creatures.find(c => c.x === x && c.y === y);
+            if (creatureHere) {
+              detectedCreatures.push({ x, y, dist: manhattan, dir, pan });
+            } else if (cell === CELL_TYPES.TREASURE) {
+              detectedTreasures.push({ x, y, dist: manhattan, dir, pan });
+            } else if (cell === CELL_TYPES.EXIT) {
+              detectedExits.push({ x, y, dist: manhattan, dir, pan });
+            } else if (cell === CELL_TYPES.WALL && manhattan === 1) {
+              adjacentWalls.push({ x, y, dist: 1, dir, pan });
+            }
+          }
+        }
+
+        // Sort detections by closeness
+        detectedTreasures.sort((a, b) => a.dist - b.dist);
+        detectedCreatures.sort((a, b) => a.dist - b.dist);
+        detectedExits.sort((a, b) => a.dist - b.dist);
+
+        // Schedule staggered spatial audio cues (180ms apart) so each cue is distinct
+        let cueIndex = 0;
+        detectedTreasures.forEach(t => {
+          this.audioManager.playTreasurePing(t.dist, t.pan, cueIndex * 0.18);
+          cueIndex++;
+        });
+        detectedCreatures.forEach(c => {
+          this.audioManager.playCreatureHeartbeat(c.dist, c.pan, cueIndex * 0.18);
+          cueIndex++;
+        });
+        detectedExits.forEach(e => {
+          this.audioManager.playExitTone(e.dist, e.pan, cueIndex * 0.18);
+          cueIndex++;
+        });
+        adjacentWalls.slice(0, 2).forEach(w => {
+          this.audioManager.playWallEchoKnock(1, w.pan, cueIndex * 0.14);
+          cueIndex++;
+        });
+
+        // Build concise spoken summary
+        const phrases = [];
+        if (detectedTreasures.length > 0) {
+          const closest = detectedTreasures[0];
+          const stepWord = closest.dist === 1 ? 'step' : 'steps';
+          phrases.push(`Treasure chime ${closest.dist} ${stepWord} ${closest.dir}`);
+        }
+        if (detectedCreatures.length > 0) {
+          const closestC = detectedCreatures[0];
+          const stepWord = closestC.dist === 1 ? 'step' : 'steps';
+          phrases.push(`Cave Beetle moving ${closestC.dist} ${stepWord} ${closestC.dir}`);
+        }
+        if (detectedExits.length > 0) {
+          const closestE = detectedExits[0];
+          const stepWord = closestE.dist === 1 ? 'step' : 'steps';
+          phrases.push(`Cavern Exit ${closestE.dist} ${stepWord} ${closestE.dir}`);
+        }
+        if (adjacentWalls.length > 0) {
+          const wallDirs = adjacentWalls.map(w => w.dir).join(' and ');
+          phrases.push(`Wall blocking ${wallDirs}`);
+        }
+
+        const summaryText = phrases.length > 0
+          ? `Echo report: ${phrases.join('. ')}.`
+          : 'Echo report: Open cavern all around you. No treasures or hazards within 3 steps.';
+
+        const audioDelayMs = Math.min(900, cueIndex * 180 + 120);
+        this.speechManager.speak(summaryText, { delayMs: audioDelayMs, interrupt: true, logTag: 'ECHO' });
+
+        return {
+          detectedTreasures,
+          detectedCreatures,
+          detectedExits,
+          adjacentWalls,
+          summaryText
+        };
+      }
+    }
+
+    /**
+     * MODULE 10: CreatureSystem.js
+     * Controls simple patrolling Cave Beetles for Level 4, Level 5, and Endless Caves.
+     */
+    class CreatureSystem {
+      static stepCreatures(grid, creatures, player) {
+        const size = grid.length;
+        const dirs = [
+          [1, 0], [-1, 0], [0, 1], [0, -1]
+        ];
+
+        creatures.forEach(c => {
+          // Try continuing in current patrol direction first
+          let nx = c.x + c.dirX;
+          let ny = c.y + c.dirY;
+
+          const canMove = (tx, ty) => {
+            if (tx < 0 || ty < 0 || tx >= size || ty >= size) return false;
+            const cell = grid[ty][tx];
+            if (cell === CELL_TYPES.WALL || cell === CELL_TYPES.TREASURE || cell === CELL_TYPES.EXIT) return false;
+            return true;
+          };
+
+          if ( (c.dirX !== 0 || c.dirY !== 0) && canMove(nx, ny) ) {
+            c.x = nx;
+            c.y = ny;
+          } else {
+            // Pick a valid open patrol direction
+            const validDirs = dirs.filter(([dx, dy]) => canMove(c.x + dx, c.y + dy));
+            if (validDirs.length > 0) {
+              const [dx, dy] = validDirs[Math.floor(Math.random() * validDirs.length)];
+              c.dirX = dx;
+              c.dirY = dy;
+              c.x += dx;
+              c.y += dy;
+            }
+          }
+        });
+
+        // Check if any creature bumped the player
+        return creatures.find(c => c.x === player.x && c.y === player.y) || null;
+      }
+    }
+
+    /**
+     * MODULE 11: TutorialManager.js
+     * Interactive 6-step self-teaching tutorial designed for a 10-year-old playing eyes-free.
+     */
+    class TutorialManager {
+      constructor(game) {
+        this.game = game;
+        this.active = false;
+        this.stepIndex = 0;
+        this.eastStepsCount = 0;
+
+        this.steps = [
+          {
+            title: 'Step 1 of 6: Welcome & Tactile Orientation',
+            prompt: 'Welcome to Explora! You are standing at Column B, Row 2. Press the F key or Spacebar to feel your starting tile.'
+          },
+          {
+            title: 'Step 2 of 6: Walking Through the Cave',
+            prompt: 'Great job! Now press the Right Arrow key or D key twice to walk 2 steps East along the open stone passage.'
+          },
+          {
+            title: 'Step 3 of 6: Feeling a Cavern Wall',
+            prompt: 'You walked East to Column D, Row 2. Now try pressing the Up Arrow key or W key to step North and hear what a solid cave wall sounds like.'
+          },
+          {
+            title: 'Step 4 of 6: Using Your Echo Sonar Pulse',
+            prompt: 'Hear that low thud? A solid wall blocks the North! Now press Spacebar or E to send out an Echo Pulse and listen for a nearby treasure chime.'
+          },
+          {
+            title: 'Step 5 of 6: Collecting the Hidden Treasure',
+            prompt: 'Did you hear the metallic chime to your Southeast? Walk 1 step East and 1 step South to collect the Golden Compass!'
+          },
+          {
+            title: 'Step 6 of 6: Escaping Through the Cavern Exit',
+            prompt: 'Awesome! You found the treasure! The Cavern Exit portal is now unlocked 2 steps South at Column E, Row 5. Walk South to complete the tutorial!'
+          }
+        ];
+      }
+
+      start() {
+        this.active = true;
+        this.stepIndex = 0;
+        this.eastStepsCount = 0;
+        this.announceCurrentStep();
+      }
+
+      announceCurrentStep() {
+        if (!this.active) return;
+        const step = this.steps[this.stepIndex];
+        this.game.updateMissionBanner('TUTORIAL', step.title, step.prompt);
+        this.game.speechManager.speak(`${step.title}. ${step.prompt}`, { delayMs: 250, interrupt: true, logTag: 'TUTORIAL' });
+      }
+
+      onAction(actionType, detail = {}) {
+        if (!this.active) return;
+
+        if (this.stepIndex === 0 && (actionType === 'feel' || actionType === 'echo' || actionType === 'move')) {
+          this.stepIndex = 1;
+          this.announceCurrentStep();
+          return;
+        }
+
+        if (this.stepIndex === 1 && actionType === 'move' && detail.dir === 'East') {
+          this.eastStepsCount++;
+          if (this.eastStepsCount >= 2 || this.game.player.x >= 3) {
+            this.stepIndex = 2;
+            this.announceCurrentStep();
+          }
+          return;
+        }
+
+        if (this.stepIndex === 2 && actionType === 'wall_bump') {
+          this.stepIndex = 3;
+          this.announceCurrentStep();
+          return;
+        }
+
+        if (this.stepIndex === 3 && actionType === 'echo') {
+          this.stepIndex = 4;
+          setTimeout(() => {
+            if (this.active && this.stepIndex === 4) {
+              this.announceCurrentStep();
+            }
+          }, 1600);
+          return;
+        }
+
+        if (this.stepIndex === 4 && actionType === 'treasure_collected') {
+          this.stepIndex = 5;
+          setTimeout(() => {
+            if (this.active && this.stepIndex === 5) {
+              this.announceCurrentStep();
+            }
+          }, 900);
+          return;
+        }
+      }
+    }
+
+    /**
+     * MODULE 12: Game.js
+     * Master Application Controller coordinating gameplay state, hardware refresh delays,
+     * keyboard/touch input, modals, and Three.js rendering loop.
+     */
+    class Game {
+      constructor() {
+        this.saveManager = new SaveManager();
+        this.audioManager = new AudioManager(this.saveManager);
+        this.speechManager = new SpeechManager(this.saveManager, this.audioManager);
+        this.tactileDisplay = new TactileDisplay3D('tactile-canvas-container');
+        this.echoSystem = new EchoSystem(this.audioManager, this.speechManager);
+        this.tutorial = new TutorialManager(this);
+
+        // Active Cave State
+        this.screen = 'menu'; // 'menu' | 'game'
+        this.currentLevelConfig = null;
+        this.cave = null;
+        this.player = { x: 0, y: 0, prevX: 0, prevY: 0 };
+        this.revealedGrid = [];
+
+        // Hardware Refresh & Cooldown State
+        this.isRefreshingTactile = false;
+        this.echoReady = true;
+        this.echoCooldownTimer = null;
+
+        // Level Session Metrics
+        this.sessionStats = {
+          steps: 0,
+          wallBumps: 0,
+          creatureBumps: 0,
+          echoesUsed: 0,
+          treasuresCollected: 0,
+          startTime: 0
+        };
+
+        this.bindUIEvents();
+        this.bindKeyboardShortcuts();
+        this.syncMenuUI();
+        this.syncSettingsUI();
+      }
+
+      /**
+       * Format (x, y) into child-friendly tactile board coordinates (e.g. "Column B, Row 2")
+       */
+      formatCoords(x, y, short = false) {
+        const colLetter = String.fromCharCode(65 + x);
+        const rowNum = y + 1;
+        return short ? `Col ${colLetter}, Row ${rowNum}` : `Column ${colLetter}, Row ${rowNum}`;
+      }
+
+      getRefreshProfile() {
+        const key = this.saveManager.data.settings.refreshProfile || 'realistic';
+        return GAME_CONFIG.refreshProfiles[key] || GAME_CONFIG.refreshProfiles.realistic;
+      }
+
+      /**
+       * Simulates physical tactile display refresh delay. Locks movement input until pins finish actuating.
+       */
+      triggerHardwareRefresh(type = 'move', onComplete = null) {
+        const profile = this.getRefreshProfile();
+        const delayMs =
+          type === 'echo' ? profile.echoMs :
+          type === 'level' ? profile.levelMs :
+          profile.moveMs;
+
+        this.isRefreshingTactile = true;
+        this.audioManager.playTactilePinRefresh(delayMs);
+
+        // Update Refresh Badge UI
+        const dot = document.getElementById('dot-refresh-state');
+        const text = document.getElementById('text-refresh-state');
+        const pill = document.getElementById('overlay-refreshing-pill');
+
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-gold-400 animate-ping';
+        if (text) text.textContent = `REFRESHING PINS (${delayMs}ms)...`;
+        if (pill) pill.classList.remove('hidden');
+
+        // Refresh 3D Tactile Board
+        this.tactileDisplay.refreshTactileState({
+          grid: this.cave.grid,
+          player: this.player,
+          creatures: this.cave.creatures,
+          revealedGrid: this.revealedGrid,
+          tactileMemoryMode: this.saveManager.data.settings.tactileMemoryMode
+        });
+
+        setTimeout(() => {
+          this.isRefreshingTactile = false;
+          if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          if (text) text.textContent = `PINS READY (${profile.moveMs}ms Delay)`;
+          if (pill) pill.classList.add('hidden');
+          if (typeof onComplete === 'function') onComplete();
+        }, delayMs);
+      }
+
+      /**
+       * Starts either the interactive Tutorial, a Campaign Level (1-5), or an Endless Custom Cave.
+       */
+      startCaveSession(mode, levelId = 1) {
+        this.audioManager.init();
+        this.closeAllModals();
+
+        document.getElementById('screen-menu').classList.add('hidden');
+        document.getElementById('screen-game').classList.remove('hidden');
+        this.screen = 'game';
+        this.tactileDisplay.handleResize();
+
+        const skipBtn = document.getElementById('btn-skip-tutorial');
+
+        if (mode === 'tutorial') {
+          this.currentLevelConfig = {
+            id: 0,
+            name: 'Interactive Audio Tutorial',
+            gridSize: 6,
+            treasures: 1,
+            creatures: 0,
+            echoRadius: 3,
+            isTutorial: true
+          };
+          this.cave = CaveGenerator.createTutorialCave();
+          if (skipBtn) skipBtn.classList.remove('hidden');
+        } else if (mode === 'endless') {
+          this.tutorial.active = false;
+          if (skipBtn) skipBtn.classList.add('hidden');
+          this.currentLevelConfig = {
+            id: 99,
+            name: 'Endless Procedural Cavern',
+            gridSize: 7,
+            wallRatio: 0.23,
+            treasures: 2,
+            creatures: 1,
+            echoRadius: 3,
+            isEndless: true
+          };
+          this.cave = CaveGenerator.generateLevelCave(this.currentLevelConfig);
+        } else {
+          this.tutorial.active = false;
+          if (skipBtn) skipBtn.classList.add('hidden');
+          const found = GAME_CONFIG.levels.find(l => l.id === levelId) || GAME_CONFIG.levels[0];
+          this.currentLevelConfig = { ...found };
+          this.cave = CaveGenerator.generateLevelCave(this.currentLevelConfig);
+        }
+
+        const size = this.cave.size;
+        this.player = {
+          x: this.cave.playerStart.x,
+          y: this.cave.playerStart.y,
+          prevX: this.cave.playerStart.x,
+          prevY: this.cave.playerStart.y
+        };
+
+        // Initialize Tactile Memory revealed cells (player's starting cell is revealed)
+        this.revealedGrid = Array.from({ length: size }, () => Array(size).fill(false));
+        this.revealedGrid[this.player.y][this.player.x] = true;
+
+        this.sessionStats = {
+          steps: 0,
+          wallBumps: 0,
+          creatureBumps: 0,
+          echoesUsed: 0,
+          treasuresCollected: 0,
+          startTime: Date.now()
+        };
+
+        this.echoReady = true;
+        this.updateHUD();
+        document.getElementById('label-grid-dimensions').textContent = `${size}×${size}`;
+
+        this.tactileDisplay.buildBoard(size);
+        this.triggerHardwareRefresh('level', () => {
+          if (mode === 'tutorial') {
+            this.tutorial.start();
+          } else {
+            const title = this.currentLevelConfig.isEndless
+              ? 'Endless Cavern'
+              : `Level ${this.currentLevelConfig.id}: ${this.currentLevelConfig.name}`;
+            const instruction = `${size} by ${size} tactile grid. Find ${this.currentLevelConfig.treasures} ${this.currentLevelConfig.treasures === 1 ? 'treasure' : 'treasures'} and reach the Exit.`;
+            this.updateMissionBanner(
+              this.currentLevelConfig.isEndless ? 'ENDLESS' : `LEVEL ${this.currentLevelConfig.id}`,
+              this.currentLevelConfig.name,
+              instruction
+            );
+            this.speechManager.speak(
+              `Entered ${title}. Starting at ${this.formatCoords(this.player.x, this.player.y)}. ${instruction} Press Spacebar to emit an Echo Pulse.`,
+              { delayMs: 100, interrupt: true, logTag: 'START' }
+            );
+          }
+        });
+      }
+
+      updateMissionBanner(badge, title, instruction) {
+        document.getElementById('badge-mode-label').textContent = badge;
+        document.getElementById('text-mission-title').textContent = title;
+        document.getElementById('text-mission-instruction').textContent = instruction;
+      }
+
+      /**
+       * Attempt to step one cell in direction (dx, dy)
+       */
+      attemptMove(dx, dy, dirName) {
+        if (this.screen !== 'game' || !this.cave) return;
+
+        if (this.isRefreshingTactile) {
+          this.audioManager.playCooldownBusy();
+          return;
+        }
+
+        const nx = this.player.x + dx;
+        const ny = this.player.y + dy;
+        const size = this.cave.size;
+        const pan = dx * 0.65;
+
+        // Check boundary or wall collision
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size || this.cave.grid[ny][nx] === CELL_TYPES.WALL) {
+          this.sessionStats.wallBumps++;
+          this.audioManager.playWallCollision(pan);
+
+          // If adjacent wall was unexplored, bumping it reveals it on the tactile display!
+          if (nx >= 0 && ny >= 0 && nx < size && ny < size) {
+            this.revealedGrid[ny][nx] = true;
+          }
+
+          const wallMsg = nx < 0 || ny < 0 || nx >= size || ny >= size
+            ? `Cavern boundary blocks your ${dirName} path at ${this.formatCoords(this.player.x, this.player.y)}.`
+            : `A solid wall blocks your ${dirName} path.`;
+
+          this.triggerHardwareRefresh('move');
+          this.updateHUD();
+          this.speechManager.speak(wallMsg, { delayMs: 140, interrupt: true, logTag: 'HAZARD' });
+          this.tutorial.onAction('wall_bump', { dir: dirName });
+          return;
+        }
+
+        // Valid step into cell
+        this.player.prevX = this.player.x;
+        this.player.prevY = this.player.y;
+        this.player.x = nx;
+        this.player.y = ny;
+        this.revealedGrid[ny][nx] = true;
+        this.sessionStats.steps++;
+        this.saveManager.data.stats.totalSteps++;
+
+        this.audioManager.playFootstep(pan);
+
+        // Advance patrolling creatures (if any)
+        if (this.cave.creatures.length > 0) {
+          const hitCreature = CreatureSystem.stepCreatures(this.cave.grid, this.cave.creatures, this.player);
+          if (hitCreature) {
+            this.handleCreatureEncounter();
+            return;
+          }
+        }
+
+        const steppedCell = this.cave.grid[ny][nx];
+
+        // Check Treasure Collection
+        if (steppedCell === CELL_TYPES.TREASURE) {
+          this.cave.grid[ny][nx] = CELL_TYPES.EMPTY;
+          this.sessionStats.treasuresCollected++;
+          this.saveManager.data.stats.totalTreasures++;
+          this.saveManager.unlockAchievement('first_treasure');
+          this.saveManager.save();
+
+          this.audioManager.playTreasureCollect();
+          const remaining = this.currentLevelConfig.treasures - this.sessionStats.treasuresCollected;
+          const statusMsg = remaining === 0
+            ? `You found a treasure at ${this.formatCoords(nx, ny)}! All treasures collected! Now find the Cavern Exit.`
+            : `You found a treasure at ${this.formatCoords(nx, ny)}! ${remaining} more treasure remaining.`;
+
+          this.triggerHardwareRefresh('move');
+          this.updateHUD();
+          this.speechManager.speak(statusMsg, { delayMs: 320, interrupt: true, logTag: 'TREASURE' });
+          this.tutorial.onAction('treasure_collected');
+          return;
+        }
+
+        // Check Exit Tile
+        if (steppedCell === CELL_TYPES.EXIT) {
+          const remaining = this.currentLevelConfig.treasures - this.sessionStats.treasuresCollected;
+          if (remaining <= 0) {
+            this.triggerHardwareRefresh('move', () => {
+              this.completeCurrentLevel();
+            });
+            return;
+          } else {
+            this.audioManager.playExitTone(1, 0, 0);
+            this.triggerHardwareRefresh('move');
+            this.updateHUD();
+            this.speechManager.speak(
+              `Standing on the Cavern Exit at ${this.formatCoords(nx, ny)}. Collect ${remaining} more ${remaining === 1 ? 'treasure' : 'treasures'} first to unlock it!`,
+              { delayMs: 350, interrupt: true, logTag: 'ECHO' }
+            );
+            return;
+          }
+        }
+
+        // Standard movement + subtle ambient proximity hints
+        this.triggerHardwareRefresh('move', () => {
+          this.checkAmbientProximityHints();
+        });
+        this.updateHUD();
+        this.tutorial.onAction('move', { dir: dirName });
+      }
+
+      /**
+       * Gentle non-punishing handling if a patrolling Cave Beetle bumps the player
+       */
+      handleCreatureEncounter() {
+        this.sessionStats.creatureBumps++;
+        this.audioManager.playCreatureHeartbeat(1, 0, 0);
+        // Step back safely to previous tile
+        this.player.x = this.player.prevX;
+        this.player.y = this.player.prevY;
+        this.triggerHardwareRefresh('move');
+        this.updateHUD();
+        this.speechManager.speak(
+          `A Cave Beetle startled you! You stepped safely back to ${this.formatCoords(this.player.x, this.player.y)}. Listen for its heartbeat!`,
+          { delayMs: 280, interrupt: true, logTag: 'HAZARD' }
+        );
+      }
+
+      /**
+       * Checks immediate 1-step surroundings for subtle audio proximity hints (Treasure shimmer, Creature heartbeat, Exit hum)
+       */
+      checkAmbientProximityHints(forceSpeak = false) {
+        if (!this.cave) return;
+        const size = this.cave.size;
+        const hints = [];
+
+        for (let y = Math.max(0, this.player.y - 2); y <= Math.min(size - 1, this.player.y + 2); y++) {
+          for (let x = Math.max(0, this.player.x - 2); x <= Math.min(size - 1, this.player.x + 2); x++) {
+            const dist = Math.abs(x - this.player.x) + Math.abs(y - this.player.y);
+            if (dist === 0) continue;
+            const pan = Math.max(-0.8, Math.min(0.8, (x - this.player.x) * 0.5));
+            const dir = EchoSystem.getCompassDirection(x - this.player.x, y - this.player.y);
+
+            const creatureHere = this.cave.creatures.find(c => c.x === x && c.y === y);
+            if (creatureHere && dist <= 2) {
+              this.audioManager.playCreatureHeartbeat(dist + 0.5, pan, 0.05);
+              hints.push(`Something is moving ${dir}`);
+            } else if (this.cave.grid[y][x] === CELL_TYPES.TREASURE && dist === 1) {
+              this.audioManager.playTreasurePing(1.5, pan, 0.05);
+              hints.push(`A treasure glimmers 1 step ${dir}`);
+            } else if (this.cave.grid[y][x] === CELL_TYPES.EXIT && dist === 1) {
+              this.audioManager.playExitTone(1.5, pan, 0.05);
+              hints.push(`The Cavern Exit hums 1 step ${dir}`);
+            }
+          }
+        }
+
+        if (hints.length > 0) {
+          this.speechManager.speak(hints.join('. ') + '.', { delayMs: 220, interrupt: false, logTag: 'HINT' });
+        } else if (forceSpeak) {
+          this.speechManager.speak(
+            `Standing on open stone at ${this.formatCoords(this.player.x, this.player.y)}. Press Spacebar to send an Echo Pulse.`,
+            { delayMs: 80, interrupt: true, logTag: 'VOICE' }
+          );
+        }
+      }
+
+      /**
+       * Emits an Echo Pulse if cooldown and tactile refresh permit.
+       */
+      emitEchoPulse() {
+        if (this.screen !== 'game' || !this.cave) return;
+
+        if (this.isRefreshingTactile || !this.echoReady) {
+          this.audioManager.playCooldownBusy();
+          if (!this.echoReady) {
+            this.speechManager.speak('Echo crystal recharging. Wait a moment.', { delayMs: 60, interrupt: true, logTag: 'ECHO' });
+          }
+          return;
+        }
+
+        this.sessionStats.echoesUsed++;
+        this.saveManager.data.stats.totalEchoes++;
+        this.saveManager.unlockAchievement('first_echo');
+        this.saveManager.save();
+
+        // Start Echo Cooldown
+        this.echoReady = false;
+        const cooldownMs = Number(this.saveManager.data.settings.echoCooldownMs) || 2000;
+        const hudEcho = document.getElementById('hud-echo-status');
+        const barEcho = document.getElementById('bar-echo-cooldown');
+
+        if (hudEcho) {
+          hudEcho.textContent = 'RECHARGING';
+          hudEcho.className = 'font-mono font-bold text-sm sm:text-base text-gold-400 mt-1';
+        }
+        if (barEcho) {
+          barEcho.style.transition = 'none';
+          barEcho.style.width = '0%';
+          requestAnimationFrame(() => {
+            barEcho.style.transition = `width ${cooldownMs}ms linear`;
+            barEcho.style.width = '100%';
+          });
+        }
+
+        setTimeout(() => {
+          this.echoReady = true;
+          if (hudEcho) {
+            hudEcho.textContent = 'READY';
+            hudEcho.className = 'font-mono font-bold text-sm sm:text-base text-emerald-400 mt-1';
+          }
+        }, cooldownMs);
+
+        // Emit Sonar Sweep + Trigger Echo Hardware Refresh Delay
+        this.audioManager.playEchoPulseEmit();
+
+        // Pre-mark cells within echo radius as revealed so pins rise during refresh
+        const radius = this.currentLevelConfig.echoRadius || 3;
+        const size = this.cave.size;
+        for (let y = Math.max(0, this.player.y - radius); y <= Math.min(size - 1, this.player.y + radius); y++) {
+          for (let x = Math.max(0, this.player.x - radius); x <= Math.min(size - 1, this.player.x + radius); x++) {
+            if (Math.abs(x - this.player.x) + Math.abs(y - this.player.y) <= radius) {
+              this.revealedGrid[y][x] = true;
+            }
+          }
+        }
+
+        this.triggerHardwareRefresh('echo', () => {
+          this.echoSystem.executeEchoScan({
+            grid: this.cave.grid,
+            player: this.player,
+            creatures: this.cave.creatures,
+            radius,
+            revealedGrid: this.revealedGrid
+          });
+          this.tutorial.onAction('echo');
+        });
+
+        this.updateHUD();
+      }
+
+      /**
+       * Speaks the player's current coordinates, remaining treasures, and echo status (Shortcut L)
+       */
+      speakLocationAndStatus() {
+        if (this.screen !== 'game' || !this.cave) return;
+        const pos = this.formatCoords(this.player.x, this.player.y);
+        const rem = this.currentLevelConfig.treasures - this.sessionStats.treasuresCollected;
+        const tText = rem === 0
+          ? 'All treasures collected, head to the Exit!'
+          : `${rem} of ${this.currentLevelConfig.treasures} ${rem === 1 ? 'treasure' : 'treasures'} remaining.`;
+        const echoText = this.echoReady ? 'Echo sonar is ready.' : 'Echo sonar is recharging.';
+        this.speechManager.speak(`Position: ${pos}. ${tText} ${echoText}`, { delayMs: 50, interrupt: true, logTag: 'STATUS' });
+      }
+
+      /**
+       * Handles Level Completion, unlocks next level & achievements, and opens the celebration screen.
+       */
+      completeCurrentLevel() {
+        this.audioManager.playLevelComplete();
+        const elapsedSec = Math.max(1, Math.round((Date.now() - this.sessionStats.startTime) / 1000));
+        const mins = Math.floor(elapsedSec / 60);
+        const secs = String(elapsedSec % 60).padStart(2, '0');
+
+        const newlyUnlocked = [];
+        this.saveManager.data.stats.cavesCleared++;
+
+        if (this.currentLevelConfig.isTutorial) {
+          this.tutorial.active = false;
+          this.saveManager.data.tutorialCompleted = true;
+          const b = this.saveManager.unlockAchievement('tutorial_grad');
+          if (b) newlyUnlocked.push(b);
+        } else if (!this.currentLevelConfig.isEndless) {
+          const lvlId = this.currentLevelConfig.id;
+          if (!this.saveManager.data.completedLevels.includes(lvlId)) {
+            this.saveManager.data.completedLevels.push(lvlId);
+          }
+          if (lvlId >= this.saveManager.data.unlockedLevel && lvlId < 5) {
+            this.saveManager.data.unlockedLevel = lvlId + 1;
+          }
+          if (this.sessionStats.wallBumps === 0) {
+            const b = this.saveManager.unlockAchievement('whisper_walker');
+            if (b) newlyUnlocked.push(b);
+          }
+          if (this.currentLevelConfig.creatures > 0 && this.sessionStats.creatureBumps === 0) {
+            const b = this.saveManager.unlockAchievement('beetle_dodger');
+            if (b) newlyUnlocked.push(b);
+          }
+          if (this.saveManager.data.completedLevels.length >= 5) {
+            const b = this.saveManager.unlockAchievement('deep_master');
+            if (b) newlyUnlocked.push(b);
+          }
+        }
+
+        this.saveManager.save();
+        this.syncMenuUI();
+
+        // Populate Level Complete Modal
+        document.getElementById('modal-complete-title').textContent = this.currentLevelConfig.isTutorial
+          ? 'Tutorial Complete!'
+          : `${this.currentLevelConfig.name} Cleared!`;
+        document.getElementById('stat-complete-treasures').textContent = `${this.sessionStats.treasuresCollected} / ${this.currentLevelConfig.treasures}`;
+        document.getElementById('stat-complete-steps').textContent = String(this.sessionStats.steps);
+        document.getElementById('stat-complete-echoes').textContent = String(this.sessionStats.echoesUsed);
+        document.getElementById('stat-complete-time').textContent = `${mins}:${secs}`;
+
+        const badgeBox = document.getElementById('box-unlocked-badges');
+        const badgeList = document.getElementById('list-unlocked-badges');
+        if (newlyUnlocked.length > 0) {
+          badgeBox.classList.remove('hidden');
+          badgeList.textContent = newlyUnlocked.map(b => `${b.title}: ${b.desc}`).join(' • ');
+        } else {
+          badgeBox.classList.add('hidden');
+        }
+
+        const nextBtn = document.getElementById('btn-complete-next');
+        if (this.currentLevelConfig.isTutorial) {
+          nextBtn.textContent = 'Start Level 1: Whispering Grotto →';
+        } else if (this.currentLevelConfig.isEndless) {
+          nextBtn.textContent = 'Generate Another Endless Cave →';
+        } else if (this.currentLevelConfig.id < 5) {
+          nextBtn.textContent = `Continue to Level ${this.currentLevelConfig.id + 1} →`;
+        } else {
+          nextBtn.textContent = 'Play Endless Master Cavern →';
+        }
+
+        document.getElementById('modal-level-complete').classList.remove('hidden');
+        nextBtn.focus();
+
+        const badgeSpeech = newlyUnlocked.length > 0
+          ? ` Achievement unlocked: ${newlyUnlocked[0].title}!`
+          : '';
+        this.speechManager.speak(
+          `Congratulations! ${this.currentLevelConfig.name} complete in ${this.sessionStats.steps} steps and ${this.sessionStats.echoesUsed} echoes.${badgeSpeech} Press Enter to continue to the next cavern.`,
+          { delayMs: 650, interrupt: true, logTag: 'VICTORY' }
+        );
+      }
+
+      updateHUD() {
+        if (!this.cave) return;
+        document.getElementById('hud-coordinates').textContent = this.formatCoords(this.player.x, this.player.y, true);
+        document.getElementById('hud-treasures').textContent = `${this.sessionStats.treasuresCollected} / ${this.currentLevelConfig.treasures}`;
+        document.getElementById('hud-steps-counter').textContent = `Steps: ${this.sessionStats.steps} | Bumps: ${this.sessionStats.wallBumps}`;
+        document.getElementById('label-echo-radius').textContent = `Radius: ${this.currentLevelConfig.echoRadius || 3} cells`;
+      }
+
+      syncMenuUI() {
+        const unlocked = this.saveManager.data.unlockedLevel || 1;
+        const startLabel = document.getElementById('label-start-continue');
+        if (startLabel) {
+          startLabel.textContent = unlocked > 1 ? `Continue Adventure (Level ${unlocked})` : 'Start Adventure (Level 1)';
+        }
+      }
+
+      syncSettingsUI() {
+        const s = this.saveManager.data.settings;
+        document.getElementById('input-master-vol').value = Math.round(s.masterVolume * 100);
+        document.getElementById('val-master-vol').textContent = `${Math.round(s.masterVolume * 100)}%`;
+
+        document.getElementById('input-sfx-vol').value = Math.round(s.sfxVolume * 100);
+        document.getElementById('val-sfx-vol').textContent = `${Math.round(s.sfxVolume * 100)}%`;
+
+        document.getElementById('input-speech-vol').value = Math.round(s.speechVolume * 100);
+        document.getElementById('val-speech-vol').textContent = `${Math.round(s.speechVolume * 100)}%`;
+
+        const speechBtn = document.getElementById('btn-toggle-speech');
+        if (s.speechEnabled) {
+          speechBtn.textContent = 'ENABLED';
+          speechBtn.className = 'btn-tactile px-3.5 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400 text-emerald-300 font-mono text-xs font-bold';
+        } else {
+          speechBtn.textContent = 'DISABLED';
+          speechBtn.className = 'btn-tactile px-3.5 py-2 rounded-xl bg-rose-500/20 border border-rose-400 text-rose-300 font-mono text-xs font-bold';
+        }
+
+        document.getElementById('select-refresh-delay').value = s.refreshProfile;
+        document.getElementById('select-echo-cooldown').value = String(s.echoCooldownMs);
+        document.getElementById('label-display-mode').textContent = s.tactileMemoryMode
+          ? 'Tactile Memory (Realistic)'
+          : 'Observer Full Map (Debug)';
+      }
+
+      populateLevelsModal() {
+        const container = document.getElementById('container-level-cards');
+        container.innerHTML = '';
+        const unlocked = this.saveManager.data.unlockedLevel || 1;
+        const completed = this.saveManager.data.completedLevels || [];
+
+        GAME_CONFIG.levels.forEach(lvl => {
+          const isUnlocked = lvl.id <= unlocked;
+          const isDone = completed.includes(lvl.id);
+
+          const card = document.createElement('div');
+          card.className = `rounded-2xl p-4 border flex flex-col justify-between gap-3 ${
+            isUnlocked ? 'bg-cavern-950/90 border-cavern-700' : 'bg-cavern-950/40 border-cavern-800 opacity-60'
+          }`;
+
+          card.innerHTML = `
+            <div>
+              <div class="flex items-center justify-between text-xs font-mono mb-1">
+                <span class="text-gold-400 font-bold">LEVEL ${lvl.id} • ${lvl.gridSize}×${lvl.gridSize} GRID</span>
+                <span class="${isDone ? 'text-emerald-400' : 'text-slate-400'}">${isDone ? '✓ CLEARED' : isUnlocked ? 'UNLOCKED' : 'LOCKED'}</span>
+              </div>
+              <h3 class="font-display font-bold text-base text-white">${lvl.name}</h3>
+              <p class="text-xs text-slate-300 mt-1">${lvl.description}</p>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-cavern-800">
+              <span class="text-[11px] font-mono text-slate-400">Treasures: ${lvl.treasures} | Beetles: ${lvl.creatures}</span>
+              <button data-level-id="${lvl.id}" ${!isUnlocked ? 'disabled' : ''} class="btn-launch-level btn-tactile px-4 py-1.5 rounded-xl ${
+                isUnlocked ? 'bg-gold-500 hover:bg-gold-400 text-cavern-950 font-bold' : 'bg-cavern-800 text-slate-500'
+              } text-xs font-display">
+                ${isUnlocked ? 'Enter Cavern' : 'Locked'}
+              </button>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+
+        container.querySelectorAll('.btn-launch-level').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = Number(btn.getAttribute('data-level-id'));
+            this.audioManager.playUiClick(true);
+            this.startCaveSession('campaign', id);
+          });
+        });
+      }
+
+      populateAchievementsModal() {
+        const stats = this.saveManager.data.stats;
+        document.getElementById('stat-lifetime-treasures').textContent = String(stats.totalTreasures || 0);
+        document.getElementById('stat-lifetime-caves').textContent = String(stats.cavesCleared || 0);
+        document.getElementById('stat-lifetime-echoes').textContent = String(stats.totalEchoes || 0);
+
+        const list = document.getElementById('container-achievements-list');
+        list.innerHTML = '';
+        const earned = this.saveManager.data.achievements || [];
+
+        GAME_CONFIG.achievements.forEach(ach => {
+          const isUnlocked = earned.includes(ach.id);
+          const item = document.createElement('div');
+          item.className = `p-3.5 rounded-2xl border flex items-start gap-3 ${
+            isUnlocked ? 'bg-gold-500/10 border-gold-400/50' : 'bg-cavern-950/60 border-cavern-800 opacity-60'
+          }`;
+          item.innerHTML = `
+            <div class="w-8 h-8 rounded-xl flex items-center justify-center font-mono text-sm shrink-0 ${
+              isUnlocked ? 'bg-gold-500 text-cavern-950 font-bold' : 'bg-cavern-800 text-slate-400'
+            }">
+              ${isUnlocked ? '★' : '🔒'}
+            </div>
+            <div>
+              <h4 class="font-display font-bold text-sm ${isUnlocked ? 'text-gold-400' : 'text-slate-300'}">${ach.title}</h4>
+              <p class="text-xs text-slate-300 mt-0.5">${ach.desc}</p>
+            </div>
+          `;
+          list.appendChild(item);
+        });
+      }
+
+      returnToMainMenu() {
+        this.tutorial.active = false;
+        this.closeAllModals();
+        this.screen = 'menu';
+        document.getElementById('screen-game').classList.add('hidden');
+        document.getElementById('screen-menu').classList.remove('hidden');
+        this.syncMenuUI();
+        this.speechManager.speak('Main Menu. Press 1 for Tutorial, 2 to Start Adventure, or 3 to Select a Cavern.', { delayMs: 80, interrupt: true, logTag: 'MENU' });
+      }
+
+      closeAllModals() {
+        ['modal-levels', 'modal-level-complete', 'modal-settings', 'modal-achievements', 'modal-howto'].forEach(id => {
+          document.getElementById(id).classList.add('hidden');
+        });
+      }
+
+      bindUIEvents() {
+        // Header Controls
+        document.getElementById('btn-header-logo').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          this.returnToMainMenu();
+        });
+
+        document.getElementById('btn-quick-mute').addEventListener('click', () => {
+          this.audioManager.muted = !this.audioManager.muted;
+          const icon = document.getElementById('icon-quick-mute');
+          const label = document.getElementById('label-quick-mute');
+          if (this.audioManager.muted) {
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            icon.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+            label.textContent = 'Audio: MUTED';
+          } else {
+            icon.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+            label.textContent = 'Audio: ON';
+            this.audioManager.playUiClick(true);
+            this.speechManager.speak('Audio enabled.', { delayMs: 50, interrupt: true });
+          }
+        });
+
+        document.getElementById('btn-header-repeat').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          this.speechManager.repeatLast();
+        });
+
+        document.getElementById('btn-open-settings').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          this.syncSettingsUI();
+          document.getElementById('modal-settings').classList.remove('hidden');
+          this.speechManager.speak('Audio and Tactile Hardware Settings opened.', { delayMs: 60, interrupt: true, logTag: 'MENU' });
+        });
+
+        // Main Menu Buttons
+        document.getElementById('btn-menu-tutorial').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          this.startCaveSession('tutorial');
+        });
+
+        document.getElementById('btn-menu-start').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          const lvl = this.saveManager.data.unlockedLevel || 1;
+          this.startCaveSession('campaign', lvl);
+        });
+
+        document.getElementById('btn-menu-levels').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          this.populateLevelsModal();
+          document.getElementById('modal-levels').classList.remove('hidden');
+          this.speechManager.speak('Select Cavern menu opened.', { delayMs: 60, interrupt: true, logTag: 'MENU' });
+        });
+
+        document.getElementById('btn-menu-achievements').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          this.populateAchievementsModal();
+          document.getElementById('modal-achievements').classList.remove('hidden');
+          this.speechManager.speak('Explorer Badges and Statistics opened.', { delayMs: 60, interrupt: true, logTag: 'MENU' });
+        });
+
+        document.getElementById('btn-menu-howto').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          document.getElementById('modal-howto').classList.remove('hidden');
+          this.speechManager.speak('How to Play and Keyboard Guide opened. Use Arrow keys or WASD to move, Spacebar for Echo Pulse, R to repeat instructions, and L to hear your coordinates.', { delayMs: 60, interrupt: true, logTag: 'MENU' });
+        });
+
+        document.getElementById('btn-menu-test-audio').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          this.syncSettingsUI();
+          document.getElementById('modal-settings').classList.remove('hidden');
+        });
+
+        // Gameplay Screen Controls
+        document.getElementById('btn-move-north').addEventListener('click', () => this.attemptMove(0, -1, 'North'));
+        document.getElementById('btn-move-south').addEventListener('click', () => this.attemptMove(0, 1, 'South'));
+        document.getElementById('btn-move-west').addEventListener('click', () => this.attemptMove(-1, 0, 'West'));
+        document.getElementById('btn-move-east').addEventListener('click', () => this.attemptMove(1, 0, 'East'));
+        document.getElementById('btn-feel-tile').addEventListener('click', () => {
+          this.tutorial.onAction('feel');
+          this.checkAmbientProximityHints(true);
+        });
+
+        document.getElementById('btn-emit-echo').addEventListener('click', () => this.emitEchoPulse());
+        document.getElementById('btn-read-status').addEventListener('click', () => this.speakLocationAndStatus());
+        document.getElementById('btn-game-menu').addEventListener('click', () => this.returnToMainMenu());
+        document.getElementById('btn-skip-tutorial').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          this.startCaveSession('campaign', 1);
+        });
+
+        document.getElementById('btn-toggle-display-mode').addEventListener('click', () => {
+          const s = this.saveManager.data.settings;
+          s.tactileMemoryMode = !s.tactileMemoryMode;
+          this.saveManager.save();
+          this.syncSettingsUI();
+          if (this.cave) {
+            this.triggerHardwareRefresh('move');
+          }
+          const modeLabel = s.tactileMemoryMode ? 'Tactile Memory Mode active' : 'Observer Full Map Mode active';
+          this.speechManager.speak(modeLabel, { delayMs: 60, interrupt: true, logTag: 'MODE' });
+        });
+
+        document.getElementById('btn-toggle-camera').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          const viewName = this.tactileDisplay.toggleCameraPreset();
+          document.getElementById('label-camera-view').textContent = viewName;
+          this.speechManager.speak(`Camera set to ${viewName}.`, { delayMs: 60, interrupt: true, logTag: 'MODE' });
+        });
+
+        // Modal Close & Action Buttons
+        document.getElementById('btn-close-levels').addEventListener('click', () => this.closeAllModals());
+        document.getElementById('btn-close-settings').addEventListener('click', () => this.closeAllModals());
+        document.getElementById('btn-save-settings').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          this.closeAllModals();
+        });
+        document.getElementById('btn-close-achievements').addEventListener('click', () => this.closeAllModals());
+        document.getElementById('btn-close-howto').addEventListener('click', () => this.closeAllModals());
+
+        document.getElementById('btn-start-endless').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          this.startCaveSession('endless');
+        });
+
+        // Level Complete Modal Buttons
+        document.getElementById('btn-complete-next').addEventListener('click', () => {
+          this.audioManager.playUiClick(true);
+          if (this.currentLevelConfig.isTutorial) {
+            this.startCaveSession('campaign', 1);
+          } else if (this.currentLevelConfig.isEndless || this.currentLevelConfig.id >= 5) {
+            this.startCaveSession('endless');
+          } else {
+            this.startCaveSession('campaign', this.currentLevelConfig.id + 1);
+          }
+        });
+
+        document.getElementById('btn-complete-replay').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          if (this.currentLevelConfig.isTutorial) {
+            this.startCaveSession('tutorial');
+          } else if (this.currentLevelConfig.isEndless) {
+            this.startCaveSession('endless');
+          } else {
+            this.startCaveSession('campaign', this.currentLevelConfig.id);
+          }
+        });
+
+        document.getElementById('btn-complete-menu').addEventListener('click', () => {
+          this.audioManager.playUiClick();
+          this.returnToMainMenu();
+        });
+
+        // Settings Inputs
+        document.getElementById('input-master-vol').addEventListener('input', (e) => {
+          this.saveManager.data.settings.masterVolume = Number(e.target.value) / 100;
+          this.saveManager.save();
+          this.syncSettingsUI();
+        });
+
+        document.getElementById('input-sfx-vol').addEventListener('input', (e) => {
+          this.saveManager.data.settings.sfxVolume = Number(e.target.value) / 100;
+          this.saveManager.save();
+          this.syncSettingsUI();
+        });
+
+        document.getElementById('input-speech-vol').addEventListener('input', (e) => {
+          this.saveManager.data.settings.speechVolume = Number(e.target.value) / 100;
+          this.saveManager.save();
+          this.syncSettingsUI();
+        });
+
+        document.getElementById('btn-toggle-speech').addEventListener('click', () => {
+          const s = this.saveManager.data.settings;
+          s.speechEnabled = !s.speechEnabled;
+          this.saveManager.save();
+          this.syncSettingsUI();
+          if (s.speechEnabled) {
+            this.speechManager.speak('Spoken guidance enabled.', { delayMs: 50, interrupt: true });
+          } else if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+          }
+        });
+
+        document.getElementById('select-refresh-delay').addEventListener('change', (e) => {
+          this.saveManager.data.settings.refreshProfile = e.target.value;
+          this.saveManager.save();
+          const prof = this.getRefreshProfile();
+          document.getElementById('text-refresh-state').textContent = `PINS READY (${prof.moveMs}ms Delay)`;
+          this.speechManager.speak(`Tactile refresh delay set to ${prof.moveMs} milliseconds.`, { delayMs: 50, interrupt: true });
+        });
+
+        document.getElementById('select-echo-cooldown').addEventListener('change', (e) => {
+          this.saveManager.data.settings.echoCooldownMs = Number(e.target.value);
+          this.saveManager.save();
+        });
+
+        document.getElementById('btn-reset-progress').addEventListener('click', () => {
+          this.saveManager.resetProgress();
+          this.syncMenuUI();
+          this.speechManager.speak('Saved progress and badges have been reset to Level 1.', { delayMs: 50, interrupt: true });
+        });
+
+        // Interactive Audio Cue Test Bench Buttons
+        document.querySelectorAll('.btn-sound-test').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const cue = btn.getAttribute('data-sound-test');
+            switch (cue) {
+              case 'footstep':
+                this.audioManager.playFootstep(0);
+                this.speechManager.speak('Footstep tap: played when walking into an open stone tile.', { delayMs: 180, interrupt: true });
+                break;
+              case 'wall':
+                this.audioManager.playWallCollision(0);
+                this.speechManager.speak('Wall collision thud: low resonant knock when a wall blocks your path.', { delayMs: 280, interrupt: true });
+                break;
+              case 'echo':
+                this.audioManager.playEchoPulseEmit();
+                this.speechManager.speak('Echo sonar pulse: sweeps outward to scan surrounding cave cells.', { delayMs: 420, interrupt: true });
+                break;
+              case 'treasure':
+                this.audioManager.playTreasurePing(1, 0, 0);
+                this.speechManager.speak('Treasure metallic chime: rings higher and brighter as you get closer to a relic.', { delayMs: 550, interrupt: true });
+                break;
+              case 'creature':
+                this.audioManager.playCreatureHeartbeat(1, 0, 0);
+                this.speechManager.speak('Cave Beetle heartbeat: a rhythmic low double pulse warning of a patrolling beetle.', { delayMs: 360, interrupt: true });
+                break;
+              case 'exit':
+                this.audioManager.playExitTone(1, 0, 0);
+                this.speechManager.speak('Exit portal chord: a warm harmonic chord marking the cavern exit.', { delayMs: 580, interrupt: true });
+                break;
+            }
+          });
+        });
+      }
+
+      bindKeyboardShortcuts() {
+        window.addEventListener('keydown', (e) => {
+          // Ignore if typing in an input/select
+          if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+          const key = e.key.toLowerCase();
+
+          // Global Repeat Last Spoken Prompt (R)
+          if (key === 'r') {
+            e.preventDefault();
+            this.speechManager.repeatLast();
+            return;
+          }
+
+          // Escape closes modals or returns to Main Menu
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            const anyModalOpen = ['modal-levels', 'modal-level-complete', 'modal-settings', 'modal-achievements', 'modal-howto']
+              .some(id => !document.getElementById(id).classList.contains('hidden'));
+            if (anyModalOpen) {
+              this.closeAllModals();
+            } else if (this.screen === 'game') {
+              this.returnToMainMenu();
+            }
+            return;
+          }
+
+          // Number shortcuts on Main Menu (1-5)
+          if (this.screen === 'menu') {
+            if (key === '1') document.getElementById('btn-menu-tutorial').click();
+            if (key === '2') document.getElementById('btn-menu-start').click();
+            if (key === '3') document.getElementById('btn-menu-levels').click();
+            if (key === '4') document.getElementById('btn-menu-achievements').click();
+            if (key === '5') document.getElementById('btn-menu-howto').click();
+            return;
+          }
+
+          // Active Gameplay Shortcuts
+          const modalOpen = ['modal-levels', 'modal-level-complete', 'modal-settings', 'modal-achievements', 'modal-howto']
+            .some(id => !document.getElementById(id).classList.contains('hidden'));
+          if (modalOpen) return;
+
+          if (e.key === 'ArrowUp' || key === 'w') {
+            e.preventDefault();
+            this.attemptMove(0, -1, 'North');
+          } else if (e.key === 'ArrowDown' || key === 's') {
+            e.preventDefault();
+            this.attemptMove(0, 1, 'South');
+          } else if (e.key === 'ArrowLeft' || key === 'a') {
+            e.preventDefault();
+            this.attemptMove(-1, 0, 'West');
+          } else if (e.key === 'ArrowRight' || key === 'd') {
+            e.preventDefault();
+            this.attemptMove(1, 0, 'East');
+          } else if (e.key === ' ' || key === 'e') {
+            e.preventDefault();
+            this.emitEchoPulse();
+          } else if (key === 'l' || key === 'i') {
+            e.preventDefault();
+            this.speakLocationAndStatus();
+          } else if (key === 'f') {
+            e.preventDefault();
+            this.tutorial.onAction('feel');
+            this.checkAmbientProximityHints(true);
+          } else if (key === 'm') {
+            e.preventDefault();
+            document.getElementById('btn-toggle-display-mode').click();
+          } else if (key === 'c') {
+            e.preventDefault();
+            document.getElementById('btn-toggle-camera').click();
+          }
+        });
+      }
+
+      startRenderLoop() {
+        const animate = () => {
+          requestAnimationFrame(animate);
+          if (this.screen === 'game') {
+            this.tactileDisplay.renderFrame();
+          }
+        };
+        animate();
+      }
+    }
+
+    // Start the game loop on window load as required
+    window.onload = function () {
+      const app = new Game();
+      app.startRenderLoop();
+    };
+  </script>
+</body>
+</html>
